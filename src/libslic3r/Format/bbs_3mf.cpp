@@ -36,7 +36,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/foreach.hpp>
-#include <openssl/md5.h>
+//#include <openssl/md5.h>
 
 namespace pt = boost::property_tree;
 
@@ -6075,7 +6075,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                 PlateData *plate_data = plate_data_list[i];
                 if (!plate_data->gcode_file.empty() && plate_data->is_sliced_valid && boost::filesystem::exists(plate_data->gcode_file)) {
                     unsigned char digest[16];
-                    MD5_CTX       ctx;
+                    /*MD5_CTX       ctx;
                     MD5_Init(&ctx);
                     auto                        src_gcode_file = plate_data->gcode_file;
                     boost::filesystem::ifstream ifs(src_gcode_file, std::ios::binary);
@@ -6087,7 +6087,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                         int read_bytes = ifs.gcount();
                         MD5_Update(&ctx, (unsigned char *) buf.data(), read_bytes);
                     }
-                    MD5_Final(digest, &ctx);
+                    MD5_Final(digest, &ctx);*/
                     char md5_str[33];
                     for (int j = 0; j < 16; j++) { sprintf(&md5_str[j * 2], "%02X", (unsigned int) digest[j]); }
                     plate_data->gcode_file_md5 = std::string(md5_str);

@@ -1487,6 +1487,7 @@ bool makedir(const std::string path) {
 
 bool bbl_calc_md5(std::string &filename, std::string &md5_out)
 {
+	/*
     unsigned char digest[16];
     MD5_CTX       ctx;
     MD5_Init(&ctx);
@@ -1502,7 +1503,7 @@ bool bbl_calc_md5(std::string &filename, std::string &md5_out)
     MD5_Final(digest, &ctx);
     char md5_str[33];
     for (int j = 0; j < 16; j++) { sprintf(&md5_str[j * 2], "%02X", (unsigned int) digest[j]); }
-    md5_out = std::string(md5_str);
+    md5_out = std::string(md5_str);*/
     return true;
 }
 

@@ -248,7 +248,7 @@ if(FLATPAK)
     find_package(EXPAT)
     find_package(CURL)
     find_package(JPEG)
-    find_package(TIFF)
+   # find_package(TIFF)
     find_package(Freetype)
     find_package(OpenSSL 1.1...<3.2)
     find_package(CURL)
@@ -262,7 +262,7 @@ endif ()
 set(PNG_PKG "")
 if (NOT PNG_FOUND) 
     include(PNG/PNG.cmake)
-    set(PNG_PKG dep_PNG)
+ #   set(PNG_PKG dep_PNG)
 endif ()
 set(EXPAT_PKG "")
 find_package(EXPAT)
@@ -286,7 +286,7 @@ include(TBB/TBB.cmake)
 
 include(Blosc/Blosc.cmake)
 include(OpenEXR/OpenEXR.cmake)
-include(OpenVDB/OpenVDB.cmake)
+#include(OpenVDB/OpenVDB.cmake)
 
 include(GMP/GMP.cmake)
 include(MPFR/MPFR.cmake)
@@ -357,20 +357,24 @@ endif ()
 include(OCCT/OCCT.cmake)
 include(OpenCV/OpenCV.cmake)
 
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pthread -fwasm-exceptions")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -pthread -fwasm-exceptions")
+
 set(_dep_list
     dep_Boost
     dep_TBB
-    ${OPENSSL_PKG}
-    ${CURL_PKG}
-    ${WXWIDGETS_PKG}
+   # ${OPENSSL_PKG}
+   # ${CURL_PKG}
+   # ${WXWIDGETS_PKG}
     dep_Cereal
     dep_NLopt
-    dep_OpenVDB
-    dep_OpenCSG
-    dep_OpenCV
+   # dep_OpenVDB
+  #  dep_OpenCSG
+   # dep_OpenCV
     dep_CGAL
-    dep_GLFW
-    dep_OCCT
+    #dep_GLFW
+   # dep_OCCT
     ${FREETYPE_PKG}
     ${PNG_PKG}
     ${ZLIB_PKG}

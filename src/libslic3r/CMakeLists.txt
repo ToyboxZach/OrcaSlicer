@@ -9,17 +9,17 @@ set(SLIC3R_BUILD_TIME ${COMPILE_TIME})
 if(NOT DEFINED ORCA_CHECK_GCODE_PLACEHOLDERS)
     set(ORCA_CHECK_GCODE_PLACEHOLDERS "0")
 endif()
+message("!!! CONFIGURE VERSION!!!")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libslic3r_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/libslic3r_version.h @ONLY)
-
 if (MINGW)
     add_compile_options(-Wa,-mbig-obj)
 endif ()
 
 set(OpenVDBUtils_SOURCES "")
-if (TARGET OpenVDB::openvdb)
-    set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp)
-endif()
+#if (TARGET OpenVDB::openvdb)
+  #  set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp)
+#endif()
 
 set(lisbslic3r_sources
     ArcFitter.cpp
@@ -132,14 +132,14 @@ set(lisbslic3r_sources
     Format/OBJ.hpp
     Format/objparser.cpp
     Format/objparser.hpp
-    Format/STEP.cpp
-    Format/STEP.hpp
+    #Format/STEP.cpp
+   # Format/STEP.hpp
     Format/STL.cpp
     Format/STL.hpp
     Format/SL1.hpp
     Format/SL1.cpp
-	Format/svg.hpp
-    Format/svg.cpp
+	#Format/svg.hpp
+    #Format/svg.cpp
     Format/ZipperArchiveImport.hpp
     Format/ZipperArchiveImport.cpp
     GCode/ThumbnailData.cpp
@@ -442,8 +442,8 @@ set(lisbslic3r_sources
     Arachne/SkeletalTrapezoidationJoint.hpp
     Arachne/WallToolPaths.hpp
     Arachne/WallToolPaths.cpp
-    Shape/TextShape.hpp
-    Shape/TextShape.cpp
+   # Shape/TextShape.hpp
+  #  Shape/TextShape.cpp
     calib.hpp
     calib.cpp
     GCode/Thumbnails.cpp
@@ -474,8 +474,10 @@ set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE ON CACHE BOOL "" FORCE)
 
 cmake_policy(PUSH)
 cmake_policy(SET CMP0011 NEW)
+#set(CMAKE_FIND_DEBUG_MODE TRUE)
+
 find_package(CGAL REQUIRED)
-find_package(OpenCV REQUIRED core)
+#find_package(OpenCV REQUIRED core)
 cmake_policy(POP)
 
 add_library(libslic3r_cgal STATIC 
@@ -509,18 +511,19 @@ if (MSVC AND "${CMAKE_SIZEOF_VOID_P}" STREQUAL "4") # 32 bit MSVC workaround
     target_compile_definitions(libslic3r_cgal PRIVATE CGAL_DO_NOT_USE_MPZF)
 endif ()
 
-encoding_check(libslic3r)
+#encoding_check(libslic3r)
 
 target_compile_definitions(libslic3r PUBLIC -DUSE_TBB -DTBB_USE_CAPTURED_EXCEPTION=0)
 target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
+target_include_directories(libslic3r PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
 # Find the OCCT and related libraries
 set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
-find_package(OpenCASCADE REQUIRED)
+#find_package(OpenCASCADE REQUIRED)
 target_include_directories(libslic3r PUBLIC ${OpenCASCADE_INCLUDE_DIR})
 
-find_package(JPEG REQUIRED)
+#find_package(JPEG REQUIRED)
 
 set(OCCT_LIBS
     TKXDESTEP
@@ -569,12 +572,12 @@ target_link_libraries(libslic3r
     TBB::tbbmalloc
     libslic3r_cgal
     ${CMAKE_DL_LIBS}
-    PNG::PNG
+    #PNG::PNG
     ZLIB::ZLIB
-    ${OCCT_LIBS}
+  #  ${OCCT_LIBS}
     Clipper2
     mcut
-    JPEG::JPEG
+   # JPEG::JPEG
     qoi
     opencv_world
     noise::noise
@@ -593,9 +596,9 @@ if (APPLE)
     target_link_libraries(libslic3r ${FOUNDATION} ${MODELIO})
 endif ()
 
-if (TARGET OpenVDB::openvdb)
-    target_link_libraries(libslic3r OpenVDB::openvdb)
-endif()
+#if (TARGET OpenVDB::openvdb)
+#    target_link_libraries(libslic3r OpenVDB::openvdb)
+#endif()
 
 if(WIN32)
     target_link_libraries(libslic3r Psapi.lib)

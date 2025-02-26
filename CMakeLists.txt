@@ -7,7 +7,6 @@ if (APPLE)
     endif ()
     message(STATUS "CMAKE_OSX_DEPLOYMENT_TARGET: ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif ()
-
 project(OrcaSlicer)
 
 include("version.inc")
@@ -44,8 +43,8 @@ else()
         endif()
 endif()
 
-option(SLIC3R_STATIC 			"Compile OrcaSlicer with static libraries (Boost, TBB, glew)" ${SLIC3R_STATIC_INITIAL})
-option(SLIC3R_GUI    			"Compile OrcaSlicer with GUI components (OpenGL, wxWidgets)" 1)
+option(SLIC3R_STATIC 			"Compile OrcaSlicer with static libraries (Boost, TBB, glew)" 1)
+option(SLIC3R_GUI    			"Compile OrcaSlicer with GUI components (OpenGL, wxWidgets)" 0)
 option(SLIC3R_FHS               "Assume OrcaSlicer is to be installed in a FHS directory structure" 0)
 option(SLIC3R_WX_STABLE         "Build against wxWidgets stable (3.0) as oppsed to dev (3.1) on Linux" 0)
 option(SLIC3R_PROFILE 			"Compile OrcaSlicer with an invasive Shiny profiler" 0)
@@ -55,7 +54,7 @@ option(SLIC3R_MSVC_PDB          "Generate PDB files on MSVC in Release mode" 1)
 option(SLIC3R_PERL_XS           "Compile XS Perl module and enable Perl unit and integration tests" 0)
 option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
 # If SLIC3R_FHS is 1 -> SLIC3R_DESKTOP_INTEGRATION is always 0, othrewise variable.
-CMAKE_DEPENDENT_OPTION(SLIC3R_DESKTOP_INTEGRATION "Allow perfoming desktop integration during runtime" 1 "NOT SLIC3R_FHS" 0)
+CMAKE_DEPENDENT_OPTION(SLIC3R_DESKTOP_INTEGRATION "Allow perfoming desktop integration during runtime" 0 "NOT SLIC3R_FHS" 0)
 
 set(OPENVDB_FIND_MODULE_PATH "" CACHE PATH "Path to OpenVDB installation's find modules.")
 
@@ -63,20 +62,6 @@ set(SLIC3R_GTK "2" CACHE STRING "GTK version to use with wxWidgets on Linux")
 
 set(IS_CROSS_COMPILE FALSE)
 
-if (APPLE)
-    set(CMAKE_FIND_FRAMEWORK LAST)
-    set(CMAKE_FIND_APPBUNDLE LAST)
-    list(FIND CMAKE_OSX_ARCHITECTURES ${CMAKE_SYSTEM_PROCESSOR} _arch_idx)
-    if (CMAKE_OSX_ARCHITECTURES AND _arch_idx LESS 0)
-        set(IS_CROSS_COMPILE TRUE)
-    endif ()
-    if (CMAKE_MACOSX_BUNDLE)
-        set(CMAKE_INSTALL_RPATH @executable_path/../Frameworks)
-    endif()
-    SET(CMAKE_XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.softfever3d.orca-slicer")
-
-    message(STATUS "Orca: IS_CROSS_COMPILE: ${IS_CROSS_COMPILE}")
-endif ()
 
 # Proposal for C++ unit tests and sandboxes
 option(SLIC3R_BUILD_SANDBOXES   "Build development sandboxes" OFF)
@@ -294,7 +279,7 @@ if (NOT MSVC AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMP
     endif()
 
     if((${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang") AND ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 15)
-        add_compile_options(-Wno-error=enum-constexpr-conversion)
+        #add_compile_options(-Wno-error=enum-constexpr-conversion)
     endif()
 
     #GCC generates loads of -Wunknown-pragmas when compiling igl. The fix is not easy due to a bug in gcc, see
@@ -361,6 +346,12 @@ include_directories(${LIBDIR})
 include_directories(${LIBDIR_BIN}/platform)
 # For ligigl
 include_directories(${LIBDIR}/libigl)
+
+#WASM STUFF
+set(EMSCRIPT_LINKERFLAGS "-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=_emscripten_num_logical_cores() -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores  -s ASSERTIONS=2 -sEXPORT_NAME=importPrusaEngine -s TOTAL_STACK=512Mb -sENVIRONMENT=worker -sMAXIMUM_MEMORY=1Gb  -s EXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -s EXIT_RUNTIME=1 -s INVOKE_RUN=0 -s INITIAL_MEMORY=1Gb")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -Wno-missing-template-arg-list-after-template-kw -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1 ")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -Wno-missing-template-arg-list-after-template-kw -ferror-limit=0 -fwasm-exceptions ")
+
 
 if(WIN32)
     add_definitions(-D_USE_MATH_DEFINES -D_WIN32 -D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS)
@@ -430,7 +421,7 @@ endif()
 # set(Boost_COMPILER "-mgw81")
 # boost::process was introduced first in version 1.64.0,
 # boost::beast::detail::base64 was introduced first in version 1.66.0
-find_package(Boost 1.66 REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options)
+find_package(Boost REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams)
 
 add_library(boost_libs INTERFACE)
 add_library(boost_headeronly INTERFACE)
@@ -458,6 +449,8 @@ endfunction()
 
 target_include_directories(boost_headeronly INTERFACE ${Boost_INCLUDE_DIRS})
 target_link_libraries(boost_libs INTERFACE boost_headeronly ${Boost_LIBRARIES})
+include_directories(${Boost_INCLUDE_DIRS})
+include_directories("${CMAKE_PREFIX_PATH}/include")
 
 # Find and configure intel-tbb
 if(SLIC3R_STATIC)
@@ -475,8 +468,8 @@ find_package(TBB REQUIRED)
 # The Intel TBB library will use the std::exception_ptr feature of C++11.
 # add_definitions(-DTBB_USE_CAPTURED_EXCEPTION=0)
 
-find_package(OpenSSL REQUIRED)
-find_package(CURL REQUIRED)
+#find_package(OpenSSL REQUIRED)
+#find_package(CURL REQUIRED)
 
 
 add_library(libcurl INTERFACE)
@@ -528,20 +521,20 @@ include_directories(BEFORE SYSTEM ${EIGEN3_INCLUDE_DIR})
 # Find expat or use bundled version
 # Always use the system libexpat on Linux.
 
-find_package(EXPAT)
+#find_package(EXPAT)
 
 if (NOT EXPAT_FOUND)
-    add_library(expat STATIC
-        ${LIBDIR}/expat/xmlparse.c
-        ${LIBDIR}/expat/xmlrole.c
-        ${LIBDIR}/expat/xmltok.c
-    )
-    set(EXPAT_FOUND 1)
-    set(EXPAT_INCLUDE_DIRS ${LIBDIR}/expat/)
-    set(EXPAT_LIBRARIES expat)
+   # add_library(expat STATIC
+   #     ${LIBDIR}/expat/xmlparse.c
+   #     ${LIBDIR}/expat/xmlrole.c
+   #     ${LIBDIR}/expat/xmltok.c
+   # )
+   # set(EXPAT_FOUND 1)
+   # set(EXPAT_INCLUDE_DIRS ${LIBDIR}/expat/)
+   # set(EXPAT_LIBRARIES expat)
 endif ()
 
-find_package(PNG REQUIRED)
+#find_package(PNG REQUIRED)
 
 set(OpenGL_GL_PREFERENCE "LEGACY")
 find_package(OpenGL REQUIRED)
@@ -554,9 +547,9 @@ if (SLIC3R_STATIC AND NOT SLIC3R_STATIC_EXCLUDE_GLEW)
     set(GLEW_VERBOSE ON)
 endif()
 
-find_package(GLEW REQUIRED)
+#find_package(GLEW REQUIRED)
 
-find_package(glfw3 REQUIRED)
+#find_package(glfw3 REQUIRED)
 
 # Find the Cereal serialization library
 find_package(cereal REQUIRED)
@@ -613,18 +606,18 @@ find_package(NLopt 1.4 REQUIRED)
 
 
 if(SLIC3R_STATIC)
-    set(OPENVDB_USE_STATIC_LIBS ON)
+   # set(OPENVDB_USE_STATIC_LIBS ON)
     set(USE_BLOSC TRUE)
 endif ()
 
-find_package(OpenVDB 5.0 COMPONENTS openvdb)
+#find_package(OpenVDB 5.0 COMPONENTS openvdb)
 if(OpenVDB_FOUND)
-    slic3r_remap_configs(IlmBase::Half RelWithDebInfo Release)
-    slic3r_remap_configs(Blosc::blosc RelWithDebInfo Release)
+    #slic3r_remap_configs(IlmBase::Half RelWithDebInfo Release)
+   # slic3r_remap_configs(Blosc::blosc RelWithDebInfo Release)
 else ()
-    message(FATAL_ERROR "OpenVDB could not be found with the bundled find module. "
-                   "You can try to specify the find module location of your "
-                   "OpenVDB installation with the OPENVDB_FIND_MODULE_PATH cache variable.")
+   # message(FATAL_ERROR "OpenVDB could not be found with the bundled find module. "
+   #                "You can try to specify the find module location of your "
+   #                "OpenVDB installation with the OPENVDB_FIND_MODULE_PATH cache variable.")
 endif ()
 
 find_path(SPNAV_INCLUDE_DIR spnav.h)
