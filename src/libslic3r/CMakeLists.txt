@@ -286,8 +286,8 @@ set(lisbslic3r_sources
     PrintObject.cpp
     PrintObjectSlice.cpp
     PrintRegion.cpp
-    PNGReadWrite.hpp
-    PNGReadWrite.cpp
+    #PNGReadWrite.hpp
+    #PNGReadWrite.cpp
     QuadricEdgeCollapse.cpp
     QuadricEdgeCollapse.hpp
     Semver.cpp
@@ -370,41 +370,41 @@ set(lisbslic3r_sources
     Optimize/Optimizer.hpp
     Optimize/NLoptOptimizer.hpp
     Optimize/BruteforceOptimizer.hpp
-    SLA/Pad.hpp
-    SLA/Pad.cpp
-    SLA/SupportTreeBuilder.hpp
-    SLA/SupportTreeMesher.hpp
-    SLA/SupportTreeMesher.cpp
-    SLA/SupportTreeBuildsteps.hpp
-    SLA/SupportTreeBuildsteps.cpp
-    SLA/SupportTreeBuilder.cpp
-    SLA/Concurrency.hpp
-    SLA/SupportTree.hpp
-    SLA/SupportTree.cpp
-#    SLA/SupportTreeIGL.cpp
-    SLA/Rotfinder.hpp
-    SLA/Rotfinder.cpp
-    SLA/BoostAdapter.hpp
-    SLA/SpatIndex.hpp
-    SLA/SpatIndex.cpp
-    SLA/RasterBase.hpp
-    SLA/RasterBase.cpp
-    SLA/AGGRaster.hpp
-    SLA/RasterToPolygons.hpp
-    SLA/RasterToPolygons.cpp
-    SLA/ConcaveHull.hpp
-    SLA/ConcaveHull.cpp
-    SLA/Hollowing.hpp
-    SLA/Hollowing.cpp
-    SLA/JobController.hpp
-    SLA/SupportPoint.hpp
-    SLA/SupportPointGenerator.hpp
-    SLA/SupportPointGenerator.cpp
-    SLA/IndexedMesh.hpp
-    SLA/IndexedMesh.cpp
-    SLA/Clustering.hpp
-    SLA/Clustering.cpp
-    SLA/ReprojectPointsOnMesh.hpp
+   #SLA/Pad.hpp
+   #SLA/Pad.cpp
+   #SLA/SupportTreeBuilder.hpp
+   #SLA/SupportTreeMesher.hpp
+   #SLA/SupportTreeMesher.cpp
+   #SLA/SupportTreeBuildsteps.hpp
+   #SLA/SupportTreeBuildsteps.cpp
+   #SLA/SupportTreeBuilder.cpp
+   #SLA/Concurrency.hpp
+   #SLA/SupportTree.hpp
+   #SLA/SupportTree.cpp
+#  # SLA/SupportTreeIGL.cpp
+   #SLA/Rotfinder.hpp
+   #SLA/Rotfinder.cpp
+   #SLA/BoostAdapter.hpp
+   #SLA/SpatIndex.hpp
+   #SLA/SpatIndex.cpp
+   #SLA/RasterBase.hpp
+   #SLA/RasterBase.cpp
+   #SLA/AGGRaster.hpp
+   #SLA/RasterToPolygons.hpp
+   #SLA/RasterToPolygons.cpp
+   #SLA/ConcaveHull.hpp
+   #SLA/ConcaveHull.cpp
+   #SLA/Hollowing.hpp
+   #SLA/Hollowing.cpp
+   #SLA/JobController.hpp
+   #SLA/SupportPoint.hpp
+   #SLA/SupportPointGenerator.hpp
+   #SLA/SupportPointGenerator.cpp
+   #SLA/IndexedMesh.hpp
+   #SLA/IndexedMesh.cpp
+   #SLA/Clustering.hpp
+   #SLA/Clustering.cpp
+   #SLA/ReprojectPointsOnMesh.hpp
     Arachne/BeadingStrategy/BeadingStrategy.hpp
     Arachne/BeadingStrategy/BeadingStrategy.cpp
     Arachne/BeadingStrategy/BeadingStrategyFactory.hpp
@@ -446,8 +446,8 @@ set(lisbslic3r_sources
   #  Shape/TextShape.cpp
     calib.hpp
     calib.cpp
-    GCode/Thumbnails.cpp
-    GCode/Thumbnails.hpp
+    #GCode/Thumbnails.cpp
+    #GCode/Thumbnails.hpp
     Interlocking/InterlockingGenerator.hpp
     Interlocking/InterlockingGenerator.cpp
     Interlocking/VoxelUtils.hpp

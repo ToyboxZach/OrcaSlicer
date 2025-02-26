@@ -158,7 +158,7 @@ unsigned get_logging_level()
     }
 }
 
-boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
+//boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
 
 // Force set_logging_level(<=error) after loading of the DLL.
 // This is currently only needed if libslic3r is loaded as a shared library into Perl interpreter
@@ -336,7 +336,7 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 	}
 	auto full_path = (log_folder / file).make_preferred();
 
-	g_log_sink = boost::log::add_file_log(
+	/*g_log_sink = boost::log::add_file_log(
 		keywords::file_name = full_path.string() + ".%N",
 		keywords::rotation_size = 100 * 1024 * 1024,
 		keywords::format =
@@ -347,7 +347,7 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 			<<"[Thread " << expr::attr<attrs::current_thread_id::value_type>("ThreadID") << "]"
 			<< ":" << expr::smessage
 		)
-	);
+	);*/
 
 	logging::add_common_attributes();
 
@@ -358,8 +358,8 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 
 void flush_logs()
 {
-	if (g_log_sink)
-		g_log_sink->flush();
+	//if (g_log_sink)
+	//	g_log_sink->flush();
 
 	return;
 }
@@ -839,7 +839,7 @@ CopyFileResult copy_file_inner(const std::string& from, const std::string& to, s
 	// That may happen when copying on some exotic file system, for example Linux on Chrome.
 	copy_file_linux(source, target, ec);
 #else // __linux__
-	boost::filesystem::copy_file(source, target, boost::filesystem::copy_option::overwrite_if_exists, ec);
+	boost::filesystem::copy_file(source, target, boost::filesystem::copy_options::overwrite_existing, ec);
 #endif // __linux__
 	if (ec) {
 		error_message = ec.message();

@@ -125,6 +125,7 @@ function build_deps() {
     )
 # GMP files not being found, this fixes it
  #   cp -rf ${DEPS_BUILD_DIR}/dep_GMP-prefix/src/dep_GMP/*.h ${DEPS}/usr/local/include
+ #  lib slicer version not getting copied over so I did this  as well cp .//build_x86_64/src/libslic3r/libslic3r_version.h ./src 
 }
 
 function pack_deps() {
