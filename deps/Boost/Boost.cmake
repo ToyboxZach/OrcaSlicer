@@ -29,6 +29,7 @@ ExternalProject_Add(dep_Boost
         -DBOOST_EXCLUDE_LIBRARIES:STRING=contract|fiber|numpy|stacktrace|wave|test
         -DBOOST_LOCALE_ENABLE_ICU:BOOL=OFF # do not link to libicu, breaks compatibility between distros
         -DBUILD_TESTING:BOOL=OFF
+        -DBOOST_IOSTREAMS_ENABLE_ZSTD:BOOL=OFF
         "${_context_abi_line}"
         "${_context_arch_line}"
         -DCMAKE_INSTALL_PREFIX:STRING=${DESTDIR}

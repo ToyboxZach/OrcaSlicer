@@ -57,6 +57,7 @@ public:
 
     // IDs of the Vertex Array Objects, into which the geometry has been loaded.
     // Zero if the VBOs are not sent to GPU yet.
+    unsigned int              vertices_VAO_id{ 0 };
     unsigned int              vertices_VBO_id{0};
     std::vector<unsigned int> triangle_indices_VBO_ids;
 };
@@ -70,8 +71,6 @@ public:
     void render_painter_gizmo() override;
 
     void data_changed(bool is_serializing) override;
-
-    void render_triangles(const Selection& selection) const override;
 
     // TriangleSelector::serialization/deserialization has a limit to store 19 different states.
     // EXTRUDER_LIMIT + 1 states are used to storing the painting because also uncolored triangles are stored.
@@ -113,6 +112,12 @@ protected:
     // BBS
     wchar_t                           m_current_tool = 0;
     bool                              m_detect_geometry_edge = true;
+    
+    // Filament remap feature
+    bool                              m_show_remap_panel = false;
+    std::vector<size_t>               m_extruder_remap;      // index → target extruder index
+    // ORCA: Cache used filaments to filter UI
+    std::set<size_t>                  m_used_filaments;      // Set of used filament indices (cached)
 
     static const constexpr float      CursorRadiusMin = 0.1f; // cannot be zero
 
@@ -134,6 +139,12 @@ private:
     // BBS
     void update_triangle_selectors_colors();
     void init_extruders_data();
+    
+    // Filament remapping methods
+    void remap_filament_assignments();
+    void render_filament_remap_ui(float window_width, float max_tooltip_width);
+    // ORCA: Helper to update the cache of used filaments
+    void update_used_filaments();
 
     // This map holds all translated description texts, so they can be easily referenced during layout calculations
     // etc. When language changes, GUI is recreated and this class constructed again, so the change takes effect.

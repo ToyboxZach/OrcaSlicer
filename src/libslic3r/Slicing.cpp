@@ -114,7 +114,7 @@ SlicingParameters SlicingParameters::create_from_config(
     params.min_layer_height = std::min(params.min_layer_height, params.layer_height);
     params.max_layer_height = std::max(params.max_layer_height, params.layer_height);
 
-    if (! soluble_interface || is_tree_slim(object_config.support_type.value, object_config.support_style.value)) {
+    if (! soluble_interface) {
         params.gap_raft_object    = object_config.raft_contact_distance.value;
         //BBS
         params.gap_object_support = object_config.support_bottom_z_distance.value; 
@@ -260,7 +260,7 @@ std::vector<double> layer_height_profile_adaptive(const SlicingParameters& slici
     // last facet visited by the as.next_layer_height() function, where the facets are sorted by their increasing Z span.
     size_t current_facet = 0;
     // loop until we have at least one layer and the max slice_z reaches the object height
-    while (print_z + EPSILON < slicing_params.object_print_z_height()) {
+    while (print_z + EPSILON < slicing_params.object_print_z_uncompensated_height()) {
         float height = slicing_params.max_layer_height;
         // Slic3r::debugf "\n Slice layer: %d\n", $id;
         // determine next layer height
@@ -331,10 +331,10 @@ std::vector<double> layer_height_profile_adaptive(const SlicingParameters& slici
         print_z += height;
     }
 
-    double z_gap = slicing_params.object_print_z_height() - *(layer_height_profile.end() - 2);
+    double z_gap = slicing_params.object_print_z_uncompensated_height() - *(layer_height_profile.end() - 2);
     if (z_gap > 0.0)
     {
-        layer_height_profile.push_back(slicing_params.object_print_z_height());
+        layer_height_profile.push_back(slicing_params.object_print_z_uncompensated_height());
         layer_height_profile.push_back(std::clamp(z_gap, slicing_params.min_layer_height, slicing_params.max_layer_height));
     }
 

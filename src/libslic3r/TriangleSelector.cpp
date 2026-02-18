@@ -3,6 +3,8 @@
 
 #include <boost/container/small_vector.hpp>
 #include <boost/log/trivial.hpp>
+#include <cstddef>
+#include <tbb/parallel_for.h>
 
 #ifndef NDEBUG
 //    #define EXPENSIVE_DEBUG_CHECKS
@@ -1256,6 +1258,22 @@ void TriangleSelector::garbage_collect()
     m_free_vertices_head = -1;
 }
 
+void TriangleSelector::remap_triangle_state(const EnforcerBlockerStateMap& state_map)
+{
+    if (m_triangles.empty())
+        return;
+
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, m_triangles.size()), [this, &state_map](const tbb::blocked_range<size_t>& range) {
+        for (size_t i = range.begin(); i != range.end(); ++i) {
+            Triangle& tr = m_triangles[i];
+            if (tr.valid()) {
+                const auto current_state = static_cast<size_t>(tr.get_state());
+                tr.set_state(state_map[current_state]);
+            }
+        }
+    });
+}
+
 TriangleSelector::TriangleSelector(const TriangleMesh& mesh, float edge_limit)
     : m_mesh{mesh}, m_neighbors(its_face_neighbors(mesh.its)), m_face_normals(its_face_normals(mesh.its)), m_edge_limit(edge_limit)
 {
@@ -1558,7 +1576,7 @@ void TriangleSelector::get_facets_split_by_tjoints(const Vec3i32 &vertices, cons
         this->get_facets_split_by_tjoints(
             { vertices(0), midpoints(0), midpoints(2) },
             { this->neighbor_child(neighbors(0), vertices(1), vertices(0), Partition::Second),
-              -1, 
+              -1,
               this->neighbor_child(neighbors(2), vertices(0), vertices(2), Partition::First) },
               out_triangles);
         this->get_facets_split_by_tjoints(
@@ -1702,7 +1720,11 @@ TriangleSelector::TriangleSplittingData TriangleSelector::serialize() const {
     return out.data;
 }
 
-void TriangleSelector::deserialize(const TriangleSplittingData& data, bool needs_reset, EnforcerBlockerType max_ebt)
+void TriangleSelector::deserialize(const TriangleSplittingData &data,
+                                   bool                         needs_reset,
+                                   EnforcerBlockerType          max_ebt,
+                                   EnforcerBlockerType          to_delete_filament,
+                                   EnforcerBlockerType          replace_filament)
 {
     if (needs_reset)
         reset(); // dump any current state
@@ -1751,8 +1773,16 @@ void TriangleSelector::deserialize(const TriangleSplittingData& data, bool needs
             auto state = is_split ? EnforcerBlockerType::NONE : EnforcerBlockerType((code & 0b1100) == 0b1100 ? next_nibble() + 3 : code >> 2);
 
             // BBS
-            if (state > max_ebt)
+            if (state == to_delete_filament)
+                state = replace_filament;
+            else if (to_delete_filament != EnforcerBlockerType::NONE && state != EnforcerBlockerType::NONE) {
+                state = state > to_delete_filament ? EnforcerBlockerType((int)state - 1) : state;
+            }
+
+            if (state > max_ebt) {
+                assert(false);
                 state = EnforcerBlockerType::NONE;
+            }
 
             // Only valid if is_split.
             int special_side = code >> 2;
@@ -2165,6 +2195,17 @@ bool TriangleSelector::Capsule2D::is_edge_inside_cursor(const Triangle &tr, cons
     }
 
     return false;
+}
+
+// ORCA: Helper to extract used states from serialized data
+std::vector<EnforcerBlockerType> TriangleSelector::extract_used_facet_states(const TriangleSplittingData &data)
+{
+    std::vector<EnforcerBlockerType> out;
+    for (size_t i = 0; i < data.used_states.size(); ++i) {
+        if (data.used_states[i])
+            out.push_back(static_cast<EnforcerBlockerType>(i));
+    }
+    return out;
 }
 
 } // namespace Slic3r
