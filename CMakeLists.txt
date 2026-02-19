@@ -487,8 +487,8 @@ include_directories(SYSTEM ${LIBDIR}/libigl)
 
 #WASM STUFF
 set(EMSCRIPT_LINKERFLAGS "-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=_emscripten_num_logical_cores() -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores  -s ASSERTIONS=2 -sEXPORT_NAME=importPrusaEngine -s TOTAL_STACK=512Mb -sENVIRONMENT=worker -sMAXIMUM_MEMORY=1Gb  -s EXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -s EXIT_RUNTIME=1 -s INVOKE_RUN=0 -s INITIAL_MEMORY=1Gb")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -Wno-missing-template-arg-list-after-template-kw -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1 ")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -Wno-missing-template-arg-list-after-template-kw -ferror-limit=0 -fwasm-exceptions ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1 ")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fwasm-exceptions ")
 
 
 if(WIN32)
@@ -615,11 +615,11 @@ find_package(TBB REQUIRED)
 find_package(Freetype REQUIRED)
 
 
-add_library(libcurl INTERFACE)
-target_link_libraries(libcurl INTERFACE CURL::libcurl)
+#add_library(libcurl INTERFACE)
+#target_link_libraries(libcurl INTERFACE CURL::libcurl)
 
 find_package(ZLIB REQUIRED)
-target_link_libraries(libcurl INTERFACE ZLIB::ZLIB)
+#target_link_libraries(libcurl INTERFACE ZLIB::ZLIB)
 
 # Fixing curl's cmake config script bugs
 if (NOT WIN32)
@@ -629,23 +629,23 @@ if (NOT WIN32)
     #find_package(Libssh2 REQUIRED)
     #target_link_libraries(libcurl INTERFACE Libssh2::libssh2)
 else()
-    target_link_libraries(libcurl INTERFACE crypt32)
+   # target_link_libraries(libcurl INTERFACE crypt32)
 endif()
 
 if (SLIC3R_STATIC AND NOT SLIC3R_STATIC_EXCLUDE_CURL)
     if (NOT APPLE)
         # libcurl is always linked dynamically to the system libcurl on OSX.
         # On other systems, libcurl is linked statically if SLIC3R_STATIC is set.
-        target_compile_definitions(libcurl INTERFACE CURL_STATICLIB)
+       # target_compile_definitions(libcurl INTERFACE CURL_STATICLIB)
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # As of now, our build system produces a statically linked libcurl,
         # which links the OpenSSL library dynamically.
-        find_package(OpenSSL REQUIRED)
-        message("OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
-        message("OpenSSL libraries: ${OPENSSL_LIBRARIES}")
-        target_include_directories(libcurl SYSTEM INTERFACE ${OPENSSL_INCLUDE_DIR})
-        target_link_libraries(libcurl INTERFACE ${OPENSSL_LIBRARIES})
+       # find_package(OpenSSL REQUIRED)
+     #   message("OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
+     #   message("OpenSSL libraries: ${OPENSSL_LIBRARIES}")
+      #  target_include_directories(libcurl SYSTEM INTERFACE ${OPENSSL_INCLUDE_DIR})
+      #  target_link_libraries(libcurl INTERFACE ${OPENSSL_LIBRARIES})
     endif()
 endif()
 
@@ -680,7 +680,7 @@ endif ()
 #find_package(PNG REQUIRED)
 
 set(OpenGL_GL_PREFERENCE "LEGACY")
-find_package(OpenGL REQUIRED)
+#find_package(OpenGL REQUIRED)
 
 if(APPLE AND CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
     set(OPENGL_LIBRARIES "-framework OpenGL" CACHE STRING "OpenGL framework" FORCE)

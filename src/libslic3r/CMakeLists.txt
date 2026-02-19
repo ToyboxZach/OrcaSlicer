@@ -192,26 +192,14 @@ set(lisbslic3r_sources
     Format/OBJ.hpp
     Format/objparser.cpp
     Format/objparser.hpp
-<<<<<<< HEAD
-    #Format/STEP.cpp
-   # Format/STEP.hpp
-    Format/STL.cpp
-    Format/STL.hpp
-    Format/SL1.hpp
-    Format/SL1.cpp
-	#Format/svg.hpp
-    #Format/svg.cpp
-    Format/ZipperArchiveImport.hpp
-=======
     Format/SL1.cpp
     Format/SL1.hpp
-    Format/STEP.cpp
-    Format/STEP.hpp
+   # Format/STEP.cpp
+  #  Format/STEP.hpp
     Format/STL.cpp
     Format/STL.hpp
-    Format/svg.cpp
-    Format/svg.hpp
->>>>>>> origin/main
+   # Format/svg.cpp
+   # Format/svg.hpp
     Format/ZipperArchiveImport.cpp
     Format/ZipperArchiveImport.hpp
     GCode/AdaptivePAInterpolator.cpp
@@ -371,13 +359,10 @@ set(lisbslic3r_sources
     PrintObject.cpp
     PrintObjectSlice.cpp
     PrintRegion.cpp
-<<<<<<< HEAD
     #PNGReadWrite.hpp
     #PNGReadWrite.cpp
-=======
     ProjectTask.cpp
     ProjectTask.hpp
->>>>>>> origin/main
     QuadricEdgeCollapse.cpp
     QuadricEdgeCollapse.hpp
     Semver.cpp
@@ -481,101 +466,6 @@ set(lisbslic3r_sources
     VariableWidth.cpp
     VariableWidth.hpp
     Zipper.cpp
-<<<<<<< HEAD
-    MinAreaBoundingBox.hpp
-    MinAreaBoundingBox.cpp
-    miniz_extension.hpp
-    miniz_extension.cpp
-    MarchingSquares.hpp
-    Execution/Execution.hpp
-    Execution/ExecutionSeq.hpp
-    Execution/ExecutionTBB.hpp
-    Optimize/Optimizer.hpp
-    Optimize/NLoptOptimizer.hpp
-    Optimize/BruteforceOptimizer.hpp
-   #SLA/Pad.hpp
-   #SLA/Pad.cpp
-   #SLA/SupportTreeBuilder.hpp
-   #SLA/SupportTreeMesher.hpp
-   #SLA/SupportTreeMesher.cpp
-   #SLA/SupportTreeBuildsteps.hpp
-   #SLA/SupportTreeBuildsteps.cpp
-   #SLA/SupportTreeBuilder.cpp
-   #SLA/Concurrency.hpp
-   #SLA/SupportTree.hpp
-   #SLA/SupportTree.cpp
-#  # SLA/SupportTreeIGL.cpp
-   #SLA/Rotfinder.hpp
-   #SLA/Rotfinder.cpp
-   #SLA/BoostAdapter.hpp
-   #SLA/SpatIndex.hpp
-   #SLA/SpatIndex.cpp
-   #SLA/RasterBase.hpp
-   #SLA/RasterBase.cpp
-   #SLA/AGGRaster.hpp
-   #SLA/RasterToPolygons.hpp
-   #SLA/RasterToPolygons.cpp
-   #SLA/ConcaveHull.hpp
-   #SLA/ConcaveHull.cpp
-   #SLA/Hollowing.hpp
-   #SLA/Hollowing.cpp
-   #SLA/JobController.hpp
-   #SLA/SupportPoint.hpp
-   #SLA/SupportPointGenerator.hpp
-   #SLA/SupportPointGenerator.cpp
-   #SLA/IndexedMesh.hpp
-   #SLA/IndexedMesh.cpp
-   #SLA/Clustering.hpp
-   #SLA/Clustering.cpp
-   #SLA/ReprojectPointsOnMesh.hpp
-    Arachne/BeadingStrategy/BeadingStrategy.hpp
-    Arachne/BeadingStrategy/BeadingStrategy.cpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.hpp
-    Arachne/BeadingStrategy/BeadingStrategyFactory.cpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.hpp
-    Arachne/BeadingStrategy/DistributedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.hpp
-    Arachne/BeadingStrategy/LimitedBeadingStrategy.cpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.hpp
-    Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.hpp
-    Arachne/BeadingStrategy/RedistributeBeadingStrategy.cpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.hpp
-    Arachne/BeadingStrategy/WideningBeadingStrategy.cpp
-    Arachne/utils/ExtrusionJunction.hpp
-    Arachne/utils/ExtrusionLine.hpp
-    Arachne/utils/ExtrusionLine.cpp
-    Arachne/utils/HalfEdge.hpp
-    Arachne/utils/HalfEdgeGraph.hpp
-    Arachne/utils/HalfEdgeNode.hpp
-    Arachne/utils/SparseGrid.hpp
-    Arachne/utils/SparsePointGrid.hpp
-    Arachne/utils/SparseLineGrid.hpp
-    Arachne/utils/SquareGrid.hpp
-    Arachne/utils/SquareGrid.cpp
-    Arachne/utils/PolygonsPointIndex.hpp
-    Arachne/utils/PolygonsSegmentIndex.hpp
-    Arachne/utils/PolylineStitcher.hpp
-    Arachne/utils/PolylineStitcher.cpp
-    Arachne/SkeletalTrapezoidation.hpp
-    Arachne/SkeletalTrapezoidation.cpp
-    Arachne/SkeletalTrapezoidationEdge.hpp
-    Arachne/SkeletalTrapezoidationGraph.hpp
-    Arachne/SkeletalTrapezoidationGraph.cpp
-    Arachne/SkeletalTrapezoidationJoint.hpp
-    Arachne/WallToolPaths.hpp
-    Arachne/WallToolPaths.cpp
-   # Shape/TextShape.hpp
-  #  Shape/TextShape.cpp
-    calib.hpp
-    calib.cpp
-    #GCode/Thumbnails.cpp
-    #GCode/Thumbnails.hpp
-    Interlocking/InterlockingGenerator.hpp
-    Interlocking/InterlockingGenerator.cpp
-    Interlocking/VoxelUtils.hpp
-    Interlocking/VoxelUtils.cpp
-=======
     Zipper.hpp
     FilamentGroup.hpp
     FilamentGroup.cpp
@@ -585,7 +475,6 @@ set(lisbslic3r_sources
     GCode/ToolOrderUtils.cpp
     FlushVolPredictor.hpp
     FlushVolPredictor.cpp
->>>>>>> origin/main
 )
 
 if (APPLE)
@@ -649,27 +538,16 @@ endif ()
 
 target_compile_definitions(libslic3r PUBLIC -DUSE_TBB -DTBB_USE_CAPTURED_EXCEPTION=0)
 target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-<<<<<<< HEAD
-target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
-target_include_directories(libslic3r PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
-# Find the OCCT and related libraries
-set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
-#find_package(OpenCASCADE REQUIRED)
-target_include_directories(libslic3r PUBLIC ${OpenCASCADE_INCLUDE_DIR})
-
-#find_package(JPEG REQUIRED)
-=======
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
 
 # Find the OCCT and related libraries
-set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
-find_package(OpenCASCADE REQUIRED)
-target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
+#set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
+#find_package(OpenCASCADE REQUIRED)
+#target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
 
-find_package(JPEG REQUIRED)
-find_package(draco REQUIRED)
->>>>>>> origin/main
+#find_package(JPEG REQUIRED)
+# find_package(draco REQUIRED)
 
 set(OCCT_LIBS
     TKXDESTEP
@@ -701,33 +579,6 @@ set(OCCT_LIBS
 )
 
 target_link_libraries(libslic3r
-<<<<<<< HEAD
-    libnest2d
-    admesh
-    cereal::cereal
-    libigl
-    miniz
-    boost_libs
-    clipper
-    nowide
-    ${EXPAT_LIBRARIES}
-    glu-libtess
-    qhull
-    semver
-    TBB::tbb
-    TBB::tbbmalloc
-    libslic3r_cgal
-    ${CMAKE_DL_LIBS}
-    #PNG::PNG
-    ZLIB::ZLIB
-  #  ${OCCT_LIBS}
-    Clipper2
-    mcut
-   # JPEG::JPEG
-    qoi
-    opencv_world
-    noise::noise
-=======
     PUBLIC
         admesh
         libigl
@@ -737,27 +588,26 @@ target_link_libraries(libslic3r
     PRIVATE
         ${CMAKE_DL_LIBS}
         ${EXPAT_LIBRARIES}
-        ${OCCT_LIBS}
+      #  ${OCCT_LIBS}
         boost_libs
         cereal::cereal
         clipper
         Clipper2
-        draco::draco
+        # draco::draco
         eigen
         glu-libtess
-        JPEG::JPEG
+       # JPEG::JPEG
         libslic3r_cgal
         mcut
         noise::noise
-        PNG::PNG
+       # PNG::PNG
         qhull
         qoi
         semver
         TBB::tbb
         TBB::tbbmalloc
         ZLIB::ZLIB
-        OpenSSL::Crypto
->>>>>>> origin/main
+    #    OpenSSL::Crypto
     )
 
 if(NOT WIN32)
@@ -774,15 +624,9 @@ if (APPLE)
     target_link_libraries(libslic3r PRIVATE ${FOUNDATION} ${MODELIO})
 endif ()
 
-<<<<<<< HEAD
 #if (TARGET OpenVDB::openvdb)
 #    target_link_libraries(libslic3r OpenVDB::openvdb)
 #endif()
-=======
-if (TARGET OpenVDB::openvdb)
-    target_link_libraries(libslic3r PRIVATE OpenVDB::openvdb)
-endif()
->>>>>>> origin/main
 
 if(WIN32)
     target_link_libraries(libslic3r PRIVATE Psapi.lib bcrypt.lib)

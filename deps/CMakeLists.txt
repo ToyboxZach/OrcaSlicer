@@ -288,12 +288,12 @@ if(FLATPAK)
     find_package(ZLIB)
     find_package(PNG)
     find_package(EXPAT)
-    find_package(CURL)
+   # find_package(CURL)
     find_package(JPEG)
    # find_package(TIFF)
     find_package(Freetype)
-    find_package(OpenSSL 1.1...<3.2)
-    find_package(CURL)
+   # find_package(OpenSSL 1.1...<3.2)
+   # find_package(CURL)
 endif()
 
 set(ZLIB_PKG "")
@@ -337,27 +337,27 @@ include(CGAL/CGAL.cmake)
 include(NLopt/NLopt.cmake)
 include(libnoise/libnoise.cmake)
 
-include(Draco/Draco.cmake)
+# include(Draco/Draco.cmake)
 
-
-# I *think* 1.1 is used for *just* md5 hashing?
-# 3.1 has everything in the right place, but the md5 funcs used are deprecated
-# a grep across the repo shows it is used for other things
-# TODO: update openssl and everything that uses <openssl/md5.h> 
-set(OPENSSL_PKG "")
-if(NOT OPENSSL_FOUND)
-    include(OpenSSL/OpenSSL.cmake)
-    set(OPENSSL_PKG dep_OpenSSL)
-endif()
-
-# we don't want to load a "wrong" openssl when loading curl
-# so, just don't even bother 
-# ...i think this is how it works? change if wrong
-set(CURL_PKG "")
-if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
-    include(CURL/CURL.cmake)
-    set(CURL_PKG dep_CURL)
-endif ()
+#
+## I *think* 1.1 is used for *just* md5 hashing?
+## 3.1 has everything in the right place, but the md5 funcs used are deprecated
+## a grep across the repo shows it is used for other things
+## TODO: update openssl and everything that uses <openssl/md5.h> 
+#set(OPENSSL_PKG "")
+#if(NOT OPENSSL_FOUND)
+#    include(OpenSSL/OpenSSL.cmake)
+#    set(OPENSSL_PKG dep_OpenSSL)
+#endif()
+#
+## we don't want to load a "wrong" openssl when loading curl
+## so, just don't even bother 
+## ...i think this is how it works? change if wrong
+#set(CURL_PKG "")
+#if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
+#    include(CURL/CURL.cmake)
+#    set(CURL_PKG dep_CURL)
+#endif ()
 
 set(JPEG_PKG "")
 if (NOT JPEG_FOUND)
@@ -402,11 +402,11 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -pthread -fwasm-exceptions")
 set(_dep_list
     dep_Boost
     dep_TBB
-   # ${OPENSSL_PKG}
+    ${OPENSSL_PKG}
    # ${CURL_PKG}
    # ${WXWIDGETS_PKG}
     dep_Cereal
-    dep_Draco
+    # dep_Draco
     dep_NLopt
    # dep_OpenVDB
   #  dep_OpenCSG

@@ -1,0 +1,82 @@
+FROM emscripten/emsdk:3.1.39
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /src
+
+# Install build helpers (cmake, ninja, ccache) and autotools for MPFR/GMP builds
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        cmake ninja-build ccache build-essential python3-pip git pkg-config \
+        libdbus-1-dev autoconf automake libtool zlib1g-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Use ccache for reproducible-ish builds and speed
+ENV CC="ccache emcc" CXX="ccache em++" CCACHE_DIR="/ccache" CCACHE_MAXSIZE="5G"
+
+# Copy repository
+
+COPY deps/ /src/deps/
+
+# Configure and build all dependencies in cached layers
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    mkdir -p deps/build_wasm && \
+    cd deps/build_wasm && \
+    emcmake cmake .. -DDESTDIR=/src/deps/build_wasm/OrcaSlicer_dep -DCMAKE_BUILD_TYPE=Release"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_Boost --parallel 4"
+# DONT USE parallel option in other makes, it cause build issues.
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_GMP -- -j1 VERBOSE=1"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_MPFR -- -j1 VERBOSE=1"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_CGAL -- -j1 VERBOSE=1"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_TBB dep_Cereal dep_NLopt dep_libnoise dep_Qhull -- -j1 "
+
+# Catch-all: build any remaining optional deps (ZLIB, FREETYPE, EXPAT, etc.)
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target deps  -- -j1"
+
+
+# Build OrcaSlicer with bind-mounted source (no COPY of full repo)
+# Explicitly point to /src/deps (built in earlier layers) since CMake auto-derives from source dir
+RUN --mount=type=bind,source=.,target=/work,rw \
+    --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cmake -S /work -B /work/build_wasm -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+      -DSLIC3R_GUI=OFF \
+      -DSLIC3R_DESKTOP_INTEGRATION=OFF \
+      -DSLIC3R_ENC_CHECK=OFF \
+      -DSLIC3R_STATIC=ON \
+      -DDEP_BUILD_DIR=/src/deps/build_wasm \
+      -DCMAKE_PREFIX_PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local && \
+      cmake --build /work/build_wasm --parallel 4"
+
+# Finally, build OrcaSlicer for wasm
+# Limit parallelism to prevent resource exhaustion and Docker crashes
+RUN /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cmake --build build_wasm -- -j1"
+
+# Keep container interactive for debugging
+CMD ["/bin/bash"]
