@@ -4,6 +4,14 @@ else()
     set(_patch_command "")
 endif()
 
+set(_tbb_compiler_args "")
+if (EMSCRIPTEN)
+    set(_tbb_compiler_args
+        -DCMAKE_CXX_COMPILER=em++
+        -DCMAKE_C_COMPILER=emcc
+    )
+endif()
+
 orcaslicer_add_cmake_project(
     TBB
     URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.13.0.zip"
@@ -18,8 +26,7 @@ orcaslicer_add_cmake_project(
         -DTBB_DISABLE_HWLOC_AUTOMATIC_SEARCH=ON 
         -DBUILD_SHARED_LIBS=OFF 
         -DTBB_EXAMPLES=OFF 
-        -DCMAKE_CXX_COMPILER=em++ 
-        -DCMAKE_C_COMPILER=emcc
+        ${_tbb_compiler_args}
         -DTBB_STRICT=OFF
 )
 

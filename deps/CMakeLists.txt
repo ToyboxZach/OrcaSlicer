@@ -40,6 +40,9 @@ endif()
 
 project(OrcaSlicer-deps)
 
+# Build options
+option(SLIC3R_HEADLESS "Build without GUI (excludes wxWidgets, JPEG, PNG, etc.)" ON)
+
 # Backward compatibility for old CMake versions
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_VERSION VERSION_LESS "3.25")
     set(LINUX ON CACHE BOOL "" FORCE)
@@ -302,7 +305,7 @@ if (NOT ZLIB_FOUND)
     set(ZLIB_PKG dep_ZLIB)
 endif ()
 set(PNG_PKG "")
-if (NOT PNG_FOUND AND NOT EMSCRIPTEN) 
+if (NOT PNG_FOUND AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS) 
     include(PNG/PNG.cmake)
     set(PNG_PKG dep_PNG)
 endif ()
@@ -320,7 +323,7 @@ include(Boost/Boost.cmake)
 include(Cereal/Cereal.cmake)
 include(Qhull/Qhull.cmake)
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(GLEW/GLEW.cmake)
     include(GLFW/GLFW.cmake)
     include(OpenCSG/OpenCSG.cmake)
@@ -345,7 +348,7 @@ include(libnoise/libnoise.cmake)
 # 3.1 has everything in the right place, but the md5 funcs used are deprecated
 # a grep across the repo shows it is used for other things
 # TODO: update openssl and everything that uses <openssl/md5.h> 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     set(OPENSSL_PKG "")
     if(NOT OPENSSL_FOUND)
         include(OpenSSL/OpenSSL.cmake)
@@ -363,14 +366,14 @@ if (NOT EMSCRIPTEN)
 endif()
 
 set(JPEG_PKG "")
-if (NOT JPEG_FOUND AND NOT EMSCRIPTEN)
+if (NOT JPEG_FOUND AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(JPEG/JPEG.cmake)
     set(JPEG_PKG dep_JPEG)
 endif()
 
 # flatpak builds wxwidgets separately, so it is not included in the deps target
 set(WXWIDGETS_PKG "")
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(wxWidgets/wxWidgets.cmake)
     if (NOT FLATPAK)
         set(WXWIDGETS_PKG "dep_wxWidgets")
@@ -378,7 +381,7 @@ if (NOT EMSCRIPTEN)
 endif()
 
 set(FREETYPE_PKG "")
-if(NOT FREETYPE_FOUND AND NOT EMSCRIPTEN)
+if(NOT FREETYPE_FOUND AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(FREETYPE/FREETYPE.cmake)
     set(FREETYPE_PKG "dep_FREETYPE") 
 endif()
@@ -397,7 +400,7 @@ if((REV_PARSE_RESULT EQUAL 0) AND (REV_PARSE_OUTPUT STREQUAL "true"))
     file(RELATIVE_PATH BINARY_DIR_REL  ${CMAKE_SOURCE_DIR}/.. ${CMAKE_BINARY_DIR})
 endif ()
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(OCCT/OCCT.cmake)
     include(OpenCV/OpenCV.cmake)
 endif ()

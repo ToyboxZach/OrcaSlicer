@@ -545,7 +545,7 @@ cmake_policy(PUSH)
 cmake_policy(SET CMP0011 NEW)
 #set(CMAKE_FIND_DEBUG_MODE TRUE)
 
-if (EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     set(CGAL_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
     set(CGAL_FOUND TRUE)
     if (NOT TARGET CGAL::CGAL)
@@ -561,7 +561,7 @@ endif ()
 #find_package(OpenCV REQUIRED core)
 cmake_policy(POP)
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     add_library(libslic3r_cgal STATIC 
         CutSurface.hpp CutSurface.cpp
         IntersectionPoints.hpp IntersectionPoints.cpp
@@ -572,7 +572,7 @@ if (NOT EMSCRIPTEN)
     target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 endif ()
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     # Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
     # (-frounding-math) still propagate to dependent libs which is not desired.
     get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)
@@ -604,7 +604,7 @@ target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC 
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
 
 # Find the OCCT and related libraries
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
 
 set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
 find_package(OpenCASCADE REQUIRED)
@@ -678,7 +678,7 @@ target_link_libraries(libslic3r
     #    OpenSSL::Crypto
     )
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     target_link_libraries(libslic3r PRIVATE libslic3r_cgal)
 endif ()
 
@@ -686,7 +686,7 @@ if(NOT WIN32)
     # Link freetype for text/font rendering
     target_link_libraries(libslic3r PRIVATE ${FREETYPE_LIBRARIES})
     # fontconfig is a native Linux system library; not available under WASM/Emscripten
-    if (NOT APPLE AND NOT EMSCRIPTEN)
+    if (NOT APPLE AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
         target_link_libraries(libslic3r PRIVATE fontconfig)
     endif()
 endif()
@@ -697,7 +697,7 @@ if (APPLE)
     target_link_libraries(libslic3r PRIVATE ${FOUNDATION} ${MODELIO})
 endif ()
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
 
 if (TARGET OpenVDB::openvdb)
     target_link_libraries(libslic3r OpenVDB::openvdb)

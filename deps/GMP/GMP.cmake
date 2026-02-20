@@ -59,26 +59,51 @@ else ()
         set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
     endif ()
 
-    ExternalProject_Add(dep_GMP
-        URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
-        URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
-        DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
-        BUILD_IN_SOURCE ON 
-        PATCH_COMMAND   echo "#! /bin/sh" > tmp && echo "unset HOST_CC" >> tmp &&  cat ./configure >> tmp && mv tmp ./configure && chmod +x ./configure 
-        CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc emconfigure ./configure --disable-cxx --host=none  --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}" ${_gmp_build_tgt}
-        BUILD_COMMAND     MPN_PATH="generic" emmake make -j 
-        INSTALL_COMMAND   emmake make  install 
-        CMAKE_ARGS
-            -DCMAKE_INSTALL_PREFIX:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
-            -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
-            -DCMAKE_PREFIX_PATH:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
-            -DCMAKE_DEBUG_POSTFIX:STRING=${CMAKE_DEBUG_POSTFIX}
-            -DCMAKE_C_COMPILER:STRING=${CMAKE_C_COMPILER}
-            -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
-            -DCMAKE_CXX_FLAGS_${_build_type_upper}:STRING=${CMAKE_CXX_FLAGS_${_build_type_upper}}
-            -DCMAKE_C_FLAGS_${_build_type_upper}:STRING=${CMAKE_C_FLAGS_${_build_type_upper}}
-            -DCMAKE_TOOLCHAIN_FILE:STRING=${CMAKE_TOOLCHAIN_FILE}
-            -DBUILD_SHARED_LIBS:BOOL=${BUILD_SHARED_LIBS}
-            ${P_ARGS_CMAKE_ARGS}
-    )
+    if (EMSCRIPTEN)
+        ExternalProject_Add(dep_GMP
+            URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
+            URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
+            DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
+            BUILD_IN_SOURCE ON 
+            PATCH_COMMAND   echo "#! /bin/sh" > tmp && echo "unset HOST_CC" >> tmp &&  cat ./configure >> tmp && mv tmp ./configure && chmod +x ./configure 
+            CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc emconfigure ./configure --disable-cxx --host=none  --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}" ${_gmp_build_tgt}
+            BUILD_COMMAND     MPN_PATH="generic" emmake make -j 
+            INSTALL_COMMAND   emmake make  install 
+            CMAKE_ARGS
+                -DCMAKE_INSTALL_PREFIX:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
+                -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+                -DCMAKE_PREFIX_PATH:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
+                -DCMAKE_DEBUG_POSTFIX:STRING=${CMAKE_DEBUG_POSTFIX}
+                -DCMAKE_C_COMPILER:STRING=${CMAKE_C_COMPILER}
+                -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
+                -DCMAKE_CXX_FLAGS_${_build_type_upper}:STRING=${CMAKE_CXX_FLAGS_${_build_type_upper}}
+                -DCMAKE_C_FLAGS_${_build_type_upper}:STRING=${CMAKE_C_FLAGS_${_build_type_upper}}
+                -DCMAKE_TOOLCHAIN_FILE:STRING=${CMAKE_TOOLCHAIN_FILE}
+                -DBUILD_SHARED_LIBS:BOOL=${BUILD_SHARED_LIBS}
+                ${P_ARGS_CMAKE_ARGS}
+        )
+    else()
+        ExternalProject_Add(dep_GMP
+            URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
+            URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
+            DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
+            BUILD_IN_SOURCE ON 
+            PATCH_COMMAND   echo "#! /bin/sh" > tmp && echo "unset HOST_CC" >> tmp &&  cat ./configure >> tmp && mv tmp ./configure && chmod +x ./configure 
+            CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc ./configure --enable-cxx --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}"
+            BUILD_COMMAND     MPN_PATH="generic" make -j 
+            INSTALL_COMMAND   make  install 
+            CMAKE_ARGS
+                -DCMAKE_INSTALL_PREFIX:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
+                -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+                -DCMAKE_PREFIX_PATH:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
+                -DCMAKE_DEBUG_POSTFIX:STRING=${CMAKE_DEBUG_POSTFIX}
+                -DCMAKE_C_COMPILER:STRING=${CMAKE_C_COMPILER}
+                -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
+                -DCMAKE_CXX_FLAGS_${_build_type_upper}:STRING=${CMAKE_CXX_FLAGS_${_build_type_upper}}
+                -DCMAKE_C_FLAGS_${_build_type_upper}:STRING=${CMAKE_C_FLAGS_${_build_type_upper}}
+                -DCMAKE_TOOLCHAIN_FILE:STRING=${CMAKE_TOOLCHAIN_FILE}
+                -DBUILD_SHARED_LIBS:BOOL=${BUILD_SHARED_LIBS}
+                ${P_ARGS_CMAKE_ARGS}
+        )
+    endif()
 endif ()
