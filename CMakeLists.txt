@@ -492,7 +492,6 @@ include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/deps_src/cereal/include)
 include_directories(SYSTEM ${LIBDIR}/libigl)
 
 #WASM STUFF
-set(EMSCRIPT_LINKERFLAGS "-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=_emscripten_num_logical_cores() -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -s ASSERTIONS=2 -sEXPORT_NAME=importPrusaEngine -s TOTAL_STACK=512Mb -sENVIRONMENT=worker -sMAXIMUM_MEMORY=1Gb -s EXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -s EXIT_RUNTIME=1 -s INVOKE_RUN=0 -s INITIAL_MEMORY=1Gb" CACHE STRING "Emscripten linker flags for OrcaSlicer")
 set(EMSCRIPT_CXX_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DSAFE_HEAP=1" CACHE STRING "Emscripten C++ compile flags for OrcaSlicer")
 set(EMSCRIPT_C_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions" CACHE STRING "Emscripten C compile flags for OrcaSlicer")
 
@@ -500,8 +499,6 @@ if (EMSCRIPTEN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMSCRIPT_CXX_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EMSCRIPT_C_FLAGS}")
 
-    separate_arguments(_EMSCRIPT_LINKERFLAGS_LIST NATIVE_COMMAND "${EMSCRIPT_LINKERFLAGS}")
-    add_link_options(${_EMSCRIPT_LINKERFLAGS_LIST})
     add_link_options(-fexceptions -sDISABLE_EXCEPTION_CATCHING=0)
 endif ()
 

@@ -54,7 +54,9 @@ using namespace nlohmann;
 #include "libslic3r/ModelArrange.hpp"
 #include "libslic3r/Platform.hpp"
 #include "libslic3r/Print.hpp"
+#if !defined(EMSCRIPTEN)
 #include "libslic3r/SLAPrint.hpp"
+#endif
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/Format/AMF.hpp"
 #include "libslic3r/Format/3mf.hpp"
@@ -73,24 +75,24 @@ using namespace nlohmann;
 
 #include "OrcaSlicer.hpp"
 //BBS: add exception handler for win32
-#include <wx/stdpaths.h>
-#ifdef WIN32
-#include "dev-utils/BaseException.h"
-#endif
-#include "slic3r/GUI/PartPlate.hpp"
-#include "slic3r/GUI/BitmapCache.hpp"
-#include "slic3r/GUI/OpenGLManager.hpp"
-#include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/Camera.hpp"
-#include "slic3r/GUI/Plater.hpp"
-#include "slic3r/GUI/GuiColor.hpp"
-#include <GLFW/glfw3.h>
+#if defined(SLIC3R_GUI) && !defined(EMSCRIPTEN)
+    #include <wx/stdpaths.h>
+    #ifdef WIN32
+    #include "dev-utils/BaseException.h"
+    #endif
+    #include "slic3r/GUI/PartPlate.hpp"
+    #include "slic3r/GUI/BitmapCache.hpp"
+    #include "slic3r/GUI/OpenGLManager.hpp"
+    #include "slic3r/GUI/GLCanvas3D.hpp"
+    #include "slic3r/GUI/Camera.hpp"
+    #include "slic3r/GUI/Plater.hpp"
+    #include "slic3r/GUI/GuiColor.hpp"
+    #include <GLFW/glfw3.h>
 
-#ifdef __WXGTK__
-#include <X11/Xlib.h>
-#endif
+    #ifdef __WXGTK__
+    #include <X11/Xlib.h>
+    #endif
 
-#ifdef SLIC3R_GUI
     #include "slic3r/GUI/GUI_Init.hpp"
 #endif /* SLIC3R_GUI */
 
@@ -494,6 +496,7 @@ const float bed3d_ax3s_default_stem_length = 25.0f;
 const float bed3d_ax3s_default_tip_radius = 2.5f * bed3d_ax3s_default_stem_radius;
 const float bed3d_ax3s_default_tip_length = 5.0f;
 
+#if !defined(EMSCRIPTEN)
 static int load_key_values_from_json(const std::string &file, std::map<std::string, std::string>& key_values)
 {
     json j;
@@ -1173,6 +1176,9 @@ static void load_downward_settings_list_from_config(std::string config_file, std
     }
 }
 
+#endif // !EMSCRIPTEN
+
+#if !defined(EMSCRIPTEN)
 int CLI::run(int argc, char **argv)
 {
     // Mark the main thread for the debugger and for runtime checks.
@@ -6997,6 +7003,13 @@ int CLI::run(int argc, char **argv)
 
     return 0;
 }
+#else
+int CLI::run(int /*argc*/, char ** /*argv*/)
+{
+    BOOST_LOG_TRIVIAL(error) << "CLI is not supported in EMSCRIPTEN headless builds.";
+    return CLI_UNSUPPORTED_OPERATION;
+}
+#endif
 
 bool CLI::setup(int argc, char **argv)
 {

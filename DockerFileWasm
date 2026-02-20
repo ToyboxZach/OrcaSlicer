@@ -16,7 +16,7 @@ WORKDIR /src
 # Smaller/faster runtime-leaning:
 #   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:opt \
 #     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DNDEBUG" \
-#     --build-arg EMSCRIPT_LINKERFLAGS="-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=_emscripten_num_logical_cores() -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -sEXPORT_NAME=importPrusaEngine -sENVIRONMENT=worker -sEXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -sEXIT_RUNTIME=1 -sINVOKE_RUN=0 -sINITIAL_MEMORY=512Mb -sMAXIMUM_MEMORY=1Gb" .
+#     --build-arg EMSCRIPT_LINKERFLAGS="-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=4 -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -sEXPORT_NAME=importPrusaEngine -sENVIRONMENT=worker -sEXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -sEXIT_RUNTIME=1 -sINVOKE_RUN=0 -sINITIAL_MEMORY=512Mb -sMAXIMUM_MEMORY=1Gb" .
 
 
 # Install build helpers (cmake, ninja, ccache) and autotools for MPFR/GMP builds
@@ -86,7 +86,7 @@ RUN --mount=type=cache,target=/ccache \
 
 
 
-ARG EMSCRIPT_LINKERFLAGS="-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=_emscripten_num_logical_cores() -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -s ASSERTIONS=2 -sEXPORT_NAME=importPrusaEngine -s TOTAL_STACK=512Mb -sENVIRONMENT=worker -sMAXIMUM_MEMORY=1Gb -s EXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -s EXIT_RUNTIME=1 -s INVOKE_RUN=0 -s INITIAL_MEMORY=1Gb"
+ARG EMSCRIPT_LINKERFLAGS="-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=4 -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -sASSERTIONS=2 -sEXPORT_NAME=importPrusaEngine -sTOTAL_STACK=512Mb -sENVIRONMENT=worker -sMAXIMUM_MEMORY=1Gb -sEXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -sEXIT_RUNTIME=1 -sINVOKE_RUN=0 -sINITIAL_MEMORY=1Gb"
 ARG EMSCRIPT_C_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions"
 ARG EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DSAFE_HEAP=1"
 
@@ -110,13 +110,22 @@ RUN --mount=type=bind,source=.,target=/work,rw \
     -DBOOST_LIBRARYDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib \
     -DEMSCRIPT_CXX_FLAGS=\"${EMSCRIPT_CXX_FLAGS}\" \
     -DEMSCRIPT_C_FLAGS=\"${EMSCRIPT_C_FLAGS}\" \
-    -DEMSCRIPT_LINKERFLAGS=\"${EMSCRIPT_LINKERFLAGS}\""
+    -DCMAKE_EXE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\" \
+    -DCMAKE_SHARED_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\" \
+    -DCMAKE_MODULE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\""
 
 RUN --mount=type=bind,source=.,target=/work,rw \
     --mount=type=cache,target=/build_wasm \
     --mount=type=cache,target=/ccache \
     /bin/bash -lc "source /emsdk/emsdk_env.sh && \
     cmake --build /build_wasm -- -j4"
+
+# Copy build artifacts from cache mount into final image filesystem
+RUN --mount=type=cache,target=/build_wasm \
+    mkdir -p /artifacts && \
+    cp /build_wasm/src/orca-slicer.js /artifacts/ && \
+    cp /build_wasm/src/orca-slicer.wasm /artifacts/ && \
+    ls -lh /artifacts/
 
 # Keep container interactive for debugging
 CMD ["/bin/bash"]

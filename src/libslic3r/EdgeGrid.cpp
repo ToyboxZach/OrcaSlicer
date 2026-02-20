@@ -10,7 +10,9 @@
 #include "EdgeGrid.hpp"
 #include "Geometry.hpp"
 #include "SVG.hpp"
+#if !defined(EMSCRIPTEN)
 #include "PNGReadWrite.hpp"
+#endif
 
 // #define EDGE_GRID_DEBUG_OUTPUT
 
@@ -1478,6 +1480,7 @@ bool EdgeGrid::Grid::has_intersecting_edges() const
 	return false;
 }
 
+#if !defined(EMSCRIPTEN)
 void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coord_t resolution, const char *path, size_t scale)
 {
     coord_t w = (bbox.max(0) - bbox.min(0) + resolution - 1) / resolution;
@@ -1565,6 +1568,7 @@ void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coo
 
 	png::write_rgb_to_file_scaled(path, w, h, pixels, scale);
 }
+#endif // !defined(EMSCRIPTEN)
 
 // Find all pairs of intersectiong edges from the set of polygons.
 std::vector<std::pair<EdgeGrid::Grid::ContourEdge, EdgeGrid::Grid::ContourEdge>> intersecting_edges(const Polygons &polygons)

@@ -402,8 +402,10 @@ protected:
 	std::vector<float>							m_signed_distance_field;
 };
 
+#if !defined(EMSCRIPTEN)
 // Debugging utility. Save the signed distance field.
 extern void save_png(const Grid &grid, const BoundingBox &bbox, coord_t resolution, const char *path, size_t scale = 1);
+#endif
 
 } // namespace EdgeGrid
 

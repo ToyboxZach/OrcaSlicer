@@ -23,7 +23,9 @@
 //BBS: add bbs 3mf
 #include "Format/bbs_3mf.hpp"
 //BBS: add step
+#if !defined(EMSCRIPTEN)
 #include "Format/STEP.hpp"
+#endif
 //BBS: add stl
 #include "Format/STL.hpp"
 #include "Format/OBJ.hpp"
@@ -1569,6 +1571,7 @@ public:
 
     OBJECTBASE_DERIVED_COPY_MOVE_CLONE(Model)
 
+#if !defined(EMSCRIPTEN)
     static Model read_from_step(const std::string&                                      input_file,
                                 LoadStrategy                                            options,
                                 ImportStepProgressFn                                    stepFn,
@@ -1577,6 +1580,7 @@ public:
                                 double                                                  linear_defletion,
                                 double                                                  angle_defletion,
                                 bool                                                    is_split_compound);
+#endif
 
     //BBS: add part plate related logic
     // BBS: backup
