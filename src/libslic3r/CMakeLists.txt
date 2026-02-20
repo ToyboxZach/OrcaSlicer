@@ -477,6 +477,15 @@ set(lisbslic3r_sources
     FlushVolPredictor.cpp
 )
 
+if (EMSCRIPTEN)
+    list(REMOVE_ITEM lisbslic3r_sources
+        Geometry/VoronoiUtilsCgal.cpp
+        Geometry/VoronoiUtilsCgal.hpp
+        ObjColorUtils.cpp
+        ObjColorUtils.hpp
+    )
+endif ()
+
 if (APPLE)
     list(APPEND lisbslic3r_sources
             MacUtils.mm
@@ -499,36 +508,52 @@ cmake_policy(PUSH)
 cmake_policy(SET CMP0011 NEW)
 #set(CMAKE_FIND_DEBUG_MODE TRUE)
 
-find_package(CGAL REQUIRED)
+if (EMSCRIPTEN)
+    set(CGAL_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+    set(CGAL_FOUND TRUE)
+    if (NOT TARGET CGAL::CGAL)
+        add_library(CGAL::CGAL INTERFACE IMPORTED)
+        set_target_properties(CGAL::CGAL PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${CGAL_INCLUDE_DIRS}"
+        )
+    endif ()
+    message(STATUS "WASM CGAL: includes=${CGAL_INCLUDE_DIRS}, libs=(header-only)")
+else ()
+    find_package(CGAL REQUIRED)
+endif ()
 #find_package(OpenCV REQUIRED core)
 cmake_policy(POP)
 
-add_library(libslic3r_cgal STATIC 
-    CutSurface.hpp CutSurface.cpp
-    IntersectionPoints.hpp IntersectionPoints.cpp
-    MeshBoolean.hpp MeshBoolean.cpp
-    TryCatchSignal.hpp TryCatchSignal.cpp
-    Triangulation.hpp Triangulation.cpp
-)
-target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
-# Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
-# (-frounding-math) still propagate to dependent libs which is not desired.
-get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)
-if (NOT TARGET ${_cgal_tgt})
-    set (_cgal_tgt CGAL::CGAL)
+if (NOT EMSCRIPTEN)
+    add_library(libslic3r_cgal STATIC 
+        CutSurface.hpp CutSurface.cpp
+        IntersectionPoints.hpp IntersectionPoints.cpp
+        MeshBoolean.hpp MeshBoolean.cpp
+        TryCatchSignal.hpp TryCatchSignal.cpp
+        Triangulation.hpp Triangulation.cpp
+    )
+    target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 endif ()
-get_target_property(_opts ${_cgal_tgt} INTERFACE_COMPILE_OPTIONS)
-if (_opts)
-    set(_opts_bad "${_opts}")
-    set(_opts_good "${_opts}")
-    list(FILTER _opts_bad INCLUDE REGEX frounding-math)
-    list(FILTER _opts_good EXCLUDE REGEX frounding-math)
-    set_target_properties(${_cgal_tgt} PROPERTIES INTERFACE_COMPILE_OPTIONS "${_opts_good}")
-    target_compile_options(libslic3r_cgal PRIVATE "${_opts_bad}")
-endif()
 
-target_link_libraries(libslic3r_cgal PRIVATE ${_cgal_tgt} eigen admesh libigl mcut boost_libs)
+if (NOT EMSCRIPTEN)
+    # Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
+    # (-frounding-math) still propagate to dependent libs which is not desired.
+    get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)
+    if (NOT TARGET ${_cgal_tgt})
+        set (_cgal_tgt CGAL::CGAL)
+    endif ()
+    get_target_property(_opts ${_cgal_tgt} INTERFACE_COMPILE_OPTIONS)
+    if (_opts)
+        set(_opts_bad "${_opts}")
+        set(_opts_good "${_opts}")
+        list(FILTER _opts_bad INCLUDE REGEX frounding-math)
+        list(FILTER _opts_good EXCLUDE REGEX frounding-math)
+        set_target_properties(${_cgal_tgt} PROPERTIES INTERFACE_COMPILE_OPTIONS "${_opts_good}")
+        target_compile_options(libslic3r_cgal PRIVATE "${_opts_bad}")
+    endif()
+
+    target_link_libraries(libslic3r_cgal PRIVATE ${_cgal_tgt} eigen admesh libigl mcut boost_libs)
+endif ()
 
 if (MSVC AND "${CMAKE_SIZEOF_VOID_P}" STREQUAL "4") # 32 bit MSVC workaround
     target_compile_definitions(libslic3r_cgal PRIVATE CGAL_DO_NOT_USE_MPZF)
@@ -578,13 +603,17 @@ set(OCCT_LIBS
     TKernel
 )
 
+# opencv_world is only available on non-WASM builds (dep_OpenCV is excluded from the WASM dep list)
+if (TARGET opencv_world)
+    target_link_libraries(libslic3r PUBLIC opencv_world)
+endif()
+
 target_link_libraries(libslic3r
     PUBLIC
         admesh
         libigl
         libnest2d
         miniz
-        opencv_world
     PRIVATE
         ${CMAKE_DL_LIBS}
         ${EXPAT_LIBRARIES}
@@ -597,7 +626,6 @@ target_link_libraries(libslic3r
         eigen
         glu-libtess
        # JPEG::JPEG
-        libslic3r_cgal
         mcut
         noise::noise
        # PNG::PNG
@@ -610,10 +638,15 @@ target_link_libraries(libslic3r
     #    OpenSSL::Crypto
     )
 
+if (NOT EMSCRIPTEN)
+    target_link_libraries(libslic3r PRIVATE libslic3r_cgal)
+endif ()
+
 if(NOT WIN32)
-    # Link freetype for OCCT dependency (CAD operations need font rendering)
+    # Link freetype for text/font rendering
     target_link_libraries(libslic3r PRIVATE ${FREETYPE_LIBRARIES})
-    if (NOT APPLE)
+    # fontconfig is a native Linux system library; not available under WASM/Emscripten
+    if (NOT APPLE AND NOT EMSCRIPTEN)
         target_link_libraries(libslic3r PRIVATE fontconfig)
     endif()
 endif()

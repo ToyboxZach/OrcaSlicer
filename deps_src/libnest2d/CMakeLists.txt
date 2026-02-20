@@ -23,7 +23,15 @@ set(LIBNEST2D_SRCFILES
 
 add_library(libnest2d STATIC ${LIBNEST2D_SRCFILES})
 
-target_include_directories(libnest2d SYSTEM PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
+target_include_directories(libnest2d SYSTEM
+    PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}/include
+    PRIVATE
+        # libslic3r headers included by the libslic3r backend use "semver/semver.h".
+        # Provide deps_src root so this resolves as deps_src/semver/semver.h during
+        # deps_src compilation before src/libslic3r target graph is linked.
+        ${CMAKE_SOURCE_DIR}/deps_src
+)
 
 #target_link_libraries(libnest2d PUBLIC NLopt::nlopt TBB::tbb Boost::boost libslic3r)
 #target_link_libraries(libnest2d PUBLIC NLopt::nlopt TBB::tbb Boost::boost libslic3r)

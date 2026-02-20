@@ -10,6 +10,26 @@
 
 # see bug report: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=925540
 
+if(EMSCRIPTEN)
+add_library(qhull INTERFACE)
+
+set(QHULL_LIB_DIR "${CMAKE_PREFIX_PATH}/lib")
+set(QHULL_INCLUDE_DIR "${CMAKE_PREFIX_PATH}/include")
+set(QHULL_LIBS
+    "${QHULL_LIB_DIR}/libqhullcpp.a"
+    "${QHULL_LIB_DIR}/libqhullstatic_r.a"
+)
+
+target_include_directories(qhull SYSTEM INTERFACE
+    "${QHULL_INCLUDE_DIR}/libqhull"
+    "${QHULL_INCLUDE_DIR}/libqhull_r"
+    "${QHULL_INCLUDE_DIR}/libqhullcpp"
+)
+target_link_libraries(qhull INTERFACE ${QHULL_LIBS})
+message(STATUS "WASM qhull: includes=${QHULL_INCLUDE_DIR}, libs=${QHULL_LIBS}")
+
+else()
+
 find_package(Qhull 7.2 QUIET)
 
 add_library(qhull INTERFACE)
@@ -29,7 +49,7 @@ else()
     target_link_libraries(qhull INTERFACE Qhull::qhullcpp Qhull::qhull_r)
 endif()
 
-else(Qhull_FOUND)
+else()
 
 project(qhull)
 cmake_minimum_required(VERSION 3.13)
@@ -148,5 +168,7 @@ endif(UNIX)
 # LIBDIR is defined in the main xs CMake file:
 target_include_directories(${qhull_STATIC} SYSTEM BEFORE PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(qhull INTERFACE ${qhull_STATIC})
+
+endif()
 
 endif()

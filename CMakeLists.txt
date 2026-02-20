@@ -482,6 +482,12 @@ message(STATUS "LIBDIR_BIN: ${LIBDIR_BIN}")
 include_directories(SYSTEM ${LIBDIR})
 # For generated header files
 include_directories(SYSTEM ${LIBDIR_BIN}/dev-utils/platform)
+# For generated libslic3r headers consumed by deps_src (for example libnest2d -> libslic3r.h -> libslic3r_version.h)
+include_directories(SYSTEM ${LIBDIR_BIN}/libslic3r)
+# For bundled Eigen header-only library (consumed by deps_src targets like libnest2d)
+include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/deps_src/eigen)
+# For bundled Cereal header-only library (consumed by libslic3r)
+include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/deps_src/cereal/include)
 # For ligigl
 include_directories(SYSTEM ${LIBDIR}/libigl)
 
@@ -562,8 +568,26 @@ endif()
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
-set(Boost_NO_SYSTEM_PATHS TRUE)
-find_package(Boost REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
+
+# For WASM builds, manually set Boost paths since Emscripten's CMake environment
+# interferes with standard library detection. For native builds, use standard finder.
+if(EMSCRIPTEN)
+  # Manual Boost detection for WASM - directly construct library paths
+  set(Boost_FOUND TRUE)
+  set(Boost_INCLUDE_DIR "${BOOST_INCLUDEDIR}")
+  set(Boost_INCLUDE_DIRS "${BOOST_INCLUDEDIR}")
+  # List of boost components and directly set library paths
+  set(BOOST_COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
+  set(Boost_LIBRARIES)
+  foreach(component ${BOOST_COMPONENTS})
+    list(APPEND Boost_LIBRARIES "${BOOST_LIBRARYDIR}/libboost_${component}.a")
+  endforeach()
+  message(STATUS "WASM Boost libs: ${Boost_LIBRARIES}")
+else()
+  # Standard Boost finder for native builds
+  set(Boost_NO_SYSTEM_PATHS TRUE)
+  find_package(Boost REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
+endif()
 
 add_library(boost_libs INTERFACE)
 add_library(boost_headeronly INTERFACE)
@@ -600,7 +624,36 @@ if(SLIC3R_STATIC)
 endif()
 set(TBB_DEBUG 1)
 set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RelWithDebInfo Release "")
-find_package(TBB REQUIRED)
+
+# For WASM builds, manually configure TBB since standard finder fails with Emscripten
+if(EMSCRIPTEN)
+  # Manual TBB detection for WASM - directly construct library paths
+  set(TBB_FOUND TRUE)
+  set(TBB_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+  set(TBB_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libtbb.a")
+  if(EXISTS "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a")
+    list(APPEND TBB_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a")
+  endif()
+  message(STATUS "WASM TBB: includes=${TBB_INCLUDE_DIRS}, libs=${TBB_LIBRARIES}")
+    if (NOT TARGET TBB::tbb)
+        add_library(TBB::tbb STATIC IMPORTED)
+        set_target_properties(TBB::tbb PROPERTIES
+            IMPORTED_LOCATION "${CMAKE_PREFIX_PATH}/lib/libtbb.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${TBB_INCLUDE_DIRS}"
+        )
+    endif()
+    if (EXISTS "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a")
+        if (NOT TARGET TBB::tbbmalloc)
+            add_library(TBB::tbbmalloc STATIC IMPORTED)
+            set_target_properties(TBB::tbbmalloc PROPERTIES
+                IMPORTED_LOCATION "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a"
+                INTERFACE_INCLUDE_DIRECTORIES "${TBB_INCLUDE_DIRS}"
+            )
+        endif()
+    endif()
+else()
+  find_package(TBB REQUIRED)
+endif()
 # include_directories(SYSTEM ${TBB_INCLUDE_DIRS})
 # add_definitions(${TBB_DEFINITIONS})
 # if(MSVC)
@@ -612,13 +665,30 @@ find_package(TBB REQUIRED)
 
 #find_package(OpenSSL REQUIRED)
 #find_package(CURL REQUIRED)
-find_package(Freetype REQUIRED)
+if(NOT EMSCRIPTEN)
+  find_package(Freetype REQUIRED)
+endif()
 
 
 #add_library(libcurl INTERFACE)
 #target_link_libraries(libcurl INTERFACE CURL::libcurl)
 
-find_package(ZLIB REQUIRED)
+# For WASM builds, manually configure ZLIB
+if(EMSCRIPTEN)
+  set(ZLIB_FOUND TRUE)
+  set(ZLIB_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+  set(ZLIB_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libz.a")
+  message(STATUS "WASM ZLIB: includes=${ZLIB_INCLUDE_DIRS}, libs=${ZLIB_LIBRARIES}")
+    if (NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB STATIC IMPORTED)
+        set_target_properties(ZLIB::ZLIB PROPERTIES
+            IMPORTED_LOCATION "${CMAKE_PREFIX_PATH}/lib/libz.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIRS}"
+        )
+    endif()
+else()
+  find_package(ZLIB REQUIRED)
+endif()
 #target_link_libraries(libcurl INTERFACE ZLIB::ZLIB)
 
 # Fixing curl's cmake config script bugs
@@ -698,26 +768,46 @@ endif()
 
 #find_package(glfw3 REQUIRED)
 
-# Find the Cereal serialization library
-find_package(cereal REQUIRED)
-if (NOT TARGET cereal::cereal)
-    set_target_properties(cereal PROPERTIES IMPORTED_GLOBAL TRUE)
-    add_library(cereal::cereal ALIAS cereal)
-else ()
-    set_target_properties(cereal::cereal PROPERTIES IMPORTED_GLOBAL TRUE)
-endif ()
+# Find the Cereal serialization library (header-only)
+if(EMSCRIPTEN)
+  # For WASM, set cereal include path manually since it's header-only
+    set(cereal_DIR "${CMAKE_PREFIX_PATH}" CACHE PATH "")
+  add_library(cereal INTERFACE IMPORTED)
+  set_target_properties(cereal PROPERTIES 
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_PREFIX_PATH}/include"
+    IMPORTED_GLOBAL TRUE)
+  add_library(cereal::cereal ALIAS cereal)
+else()
+  find_package(cereal REQUIRED)
+  if (NOT TARGET cereal::cereal)
+      set_target_properties(cereal PROPERTIES IMPORTED_GLOBAL TRUE)
+      add_library(cereal::cereal ALIAS cereal)
+  else ()
+      set_target_properties(cereal::cereal PROPERTIES IMPORTED_GLOBAL TRUE)
+  endif ()
+endif()
 
 # l10n
 set(L10N_DIR "${SLIC3R_RESOURCES_DIR}/i18n")
 set(BBL_L18N_DIR "${CMAKE_CURRENT_SOURCE_DIR}/localization/i18n")
-add_custom_target(gettext_make_pot
-    COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --no-location --debug --boost
-        -f "${BBL_L18N_DIR}/list.txt"
-        -o "${BBL_L18N_DIR}/OrcaSlicer.pot"
-	COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${BBL_L18N_DIR}
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Generate pot file from strings in the source tree"
-)
+if (TARGET hintsToPot)
+    add_custom_target(gettext_make_pot
+        COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --no-location --debug --boost
+            -f "${BBL_L18N_DIR}/list.txt"
+            -o "${BBL_L18N_DIR}/OrcaSlicer.pot"
+        COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${BBL_L18N_DIR}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Generate pot file from strings in the source tree"
+    )
+else()
+    add_custom_target(gettext_make_pot
+        COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --no-location --debug --boost
+            -f "${BBL_L18N_DIR}/list.txt"
+            -o "${BBL_L18N_DIR}/OrcaSlicer.pot"
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Generate pot file from strings in the source tree"
+    )
+endif()
 add_custom_target(gettext_merge_po_with_pot
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Merge localization po with new generated pot file"
@@ -749,7 +839,15 @@ foreach(po_file ${BBL_L10N_PO_FILES})
     )
 endforeach()
 
-find_package(NLopt 1.4 REQUIRED)
+# For WASM builds, manually configure NLopt
+if(EMSCRIPTEN)
+  set(NLopt_FOUND TRUE)
+  set(NLopt_INCLUDE_DIR "${CMAKE_PREFIX_PATH}/include")
+  set(NLopt_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libnlopt.a")
+  message(STATUS "WASM NLopt: includes=${NLopt_INCLUDE_DIR}, libs=${NLopt_LIBRARIES}")
+else()
+  find_package(NLopt 1.4 REQUIRED)
+endif()
 
 
 if(SLIC3R_STATIC)
@@ -883,7 +981,9 @@ add_subdirectory(deps_src)
 add_subdirectory(src)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT OrcaSlicer_app_gui)
 
-add_dependencies(gettext_make_pot hintsToPot)
+if (TARGET hintsToPot)
+    add_dependencies(gettext_make_pot hintsToPot)
+endif()
 
 if(SLIC3R_BUILD_SANDBOXES)
     add_subdirectory(sandboxes)

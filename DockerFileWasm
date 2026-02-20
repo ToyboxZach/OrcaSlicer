@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/ccache \
 RUN --mount=type=bind,source=.,target=/work,rw \
     --mount=type=cache,target=/ccache \
     /bin/bash -lc "source /emsdk/emsdk_env.sh && \
-    cmake -S /work -B /work/build_wasm -G Ninja \
+    emcmake cmake -S /work -B /work/build_wasm -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
       -DSLIC3R_GUI=OFF \
@@ -70,13 +70,11 @@ RUN --mount=type=bind,source=.,target=/work,rw \
       -DSLIC3R_ENC_CHECK=OFF \
       -DSLIC3R_STATIC=ON \
       -DDEP_BUILD_DIR=/src/deps/build_wasm \
-      -DCMAKE_PREFIX_PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local && \
-      cmake --build /work/build_wasm --parallel 4"
-
-# Finally, build OrcaSlicer for wasm
-# Limit parallelism to prevent resource exhaustion and Docker crashes
-RUN /bin/bash -lc "source /emsdk/emsdk_env.sh && \
-    cmake --build build_wasm -- -j1"
+      -DCMAKE_PREFIX_PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local \
+      -DBoost_ROOT=/src/deps/build_wasm/OrcaSlicer_dep/usr/local \
+      -DBOOST_INCLUDEDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/include \
+      -DBOOST_LIBRARYDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib && \
+      cmake --build /work/build_wasm -- -j4"
 
 # Keep container interactive for debugging
 CMD ["/bin/bash"]
