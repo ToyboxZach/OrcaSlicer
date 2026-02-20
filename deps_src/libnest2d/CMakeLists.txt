@@ -33,6 +33,4 @@ target_include_directories(libnest2d SYSTEM
         ${CMAKE_SOURCE_DIR}/deps_src
 )
 
-#target_link_libraries(libnest2d PUBLIC NLopt::nlopt TBB::tbb Boost::boost libslic3r)
-#target_link_libraries(libnest2d PUBLIC NLopt::nlopt TBB::tbb Boost::boost libslic3r)
 target_compile_definitions(libnest2d PUBLIC LIBNEST2D_THREADING_tbb LIBNEST2D_STATIC LIBNEST2D_OPTIMIZER_nlopt LIBNEST2D_GEOMETRIES_libslic3r)

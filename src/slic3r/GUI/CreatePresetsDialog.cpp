@@ -4,8 +4,14 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-//#include <openssl/md5.h>
-//#include <openssl/evp.h>
+#if !defined(SLIC3R_HEADLESS)
+
+#include <openssl/md5.h>
+
+#endif
+
+
+#include <openssl/evp.h>
 #include <wx/dcgraph.h>
 #include <wx/tooltip.h>
 #include <boost/nowide/cstdio.hpp>
@@ -467,7 +473,7 @@ static std::string calculate_md5(const std::string &input)
     
     //unsigned char digest[MD5_DIGEST_LENGTH];
     std::string   md5;
-/*
+
     EVP_MD_CTX *mdContext = EVP_MD_CTX_new();
     EVP_DigestInit(mdContext, EVP_md5());
     EVP_DigestUpdate(mdContext, input.c_str(), input.length());
@@ -478,7 +484,7 @@ static std::string calculate_md5(const std::string &input)
     for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) { sprintf(hexDigest + (i * 2), "%02x", digest[i]); }
     hexDigest[MD5_DIGEST_LENGTH * 2] = '\0';
 
-    md5 = std::string(hexDigest);*/
+    md5 = std::string(hexDigest);
     return md5;
 }
 

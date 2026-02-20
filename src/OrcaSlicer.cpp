@@ -54,7 +54,7 @@ using namespace nlohmann;
 #include "libslic3r/ModelArrange.hpp"
 #include "libslic3r/Platform.hpp"
 #include "libslic3r/Print.hpp"
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include "libslic3r/SLAPrint.hpp"
 #endif
 #include "libslic3r/TriangleMesh.hpp"
@@ -75,7 +75,7 @@ using namespace nlohmann;
 
 #include "OrcaSlicer.hpp"
 //BBS: add exception handler for win32
-#if defined(SLIC3R_GUI) && !defined(EMSCRIPTEN)
+#if defined(SLIC3R_GUI) && !defined(SLIC3R_HEADLESS)
     #include <wx/stdpaths.h>
     #ifdef WIN32
     #include "dev-utils/BaseException.h"
@@ -496,7 +496,7 @@ const float bed3d_ax3s_default_stem_length = 25.0f;
 const float bed3d_ax3s_default_tip_radius = 2.5f * bed3d_ax3s_default_stem_radius;
 const float bed3d_ax3s_default_tip_length = 5.0f;
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 static int load_key_values_from_json(const std::string &file, std::map<std::string, std::string>& key_values)
 {
     json j;
@@ -1178,7 +1178,7 @@ static void load_downward_settings_list_from_config(std::string config_file, std
 
 #endif // !EMSCRIPTEN
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 int CLI::run(int argc, char **argv)
 {
     // Mark the main thread for the debugger and for runtime checks.

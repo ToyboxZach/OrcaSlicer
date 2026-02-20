@@ -302,9 +302,9 @@ if (NOT ZLIB_FOUND)
     set(ZLIB_PKG dep_ZLIB)
 endif ()
 set(PNG_PKG "")
-if (NOT PNG_FOUND) 
+if (NOT PNG_FOUND AND NOT EMSCRIPTEN) 
     include(PNG/PNG.cmake)
- #   set(PNG_PKG dep_PNG)
+    set(PNG_PKG dep_PNG)
 endif ()
 set(EXPAT_PKG "")
 find_package(EXPAT)
@@ -319,15 +319,16 @@ include(Boost/Boost.cmake)
 # The order of includes respects the dependencies between libraries
 include(Cereal/Cereal.cmake)
 include(Qhull/Qhull.cmake)
-include(GLEW/GLEW.cmake)
 
-include(GLFW/GLFW.cmake)
-include(OpenCSG/OpenCSG.cmake)
+if (NOT EMSCRIPTEN)
+    include(GLEW/GLEW.cmake)
+    include(GLFW/GLFW.cmake)
+    include(OpenCSG/OpenCSG.cmake)
+    include(Blosc/Blosc.cmake)
+    include(OpenEXR/OpenEXR.cmake)
+endif ()
 
 include(TBB/TBB.cmake)
-
-include(Blosc/Blosc.cmake)
-include(OpenEXR/OpenEXR.cmake)
 #include(OpenVDB/OpenVDB.cmake)
 
 include(GMP/GMP.cmake)
@@ -340,40 +341,44 @@ include(libnoise/libnoise.cmake)
 # include(Draco/Draco.cmake)
 
 #
-## I *think* 1.1 is used for *just* md5 hashing?
-## 3.1 has everything in the right place, but the md5 funcs used are deprecated
-## a grep across the repo shows it is used for other things
-## TODO: update openssl and everything that uses <openssl/md5.h> 
-#set(OPENSSL_PKG "")
-#if(NOT OPENSSL_FOUND)
-#    include(OpenSSL/OpenSSL.cmake)
-#    set(OPENSSL_PKG dep_OpenSSL)
-#endif()
-#
-## we don't want to load a "wrong" openssl when loading curl
-## so, just don't even bother 
-## ...i think this is how it works? change if wrong
-#set(CURL_PKG "")
-#if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
-#    include(CURL/CURL.cmake)
-#    set(CURL_PKG dep_CURL)
-#endif ()
+# I *think* 1.1 is used for *just* md5 hashing?
+# 3.1 has everything in the right place, but the md5 funcs used are deprecated
+# a grep across the repo shows it is used for other things
+# TODO: update openssl and everything that uses <openssl/md5.h> 
+if (NOT EMSCRIPTEN)
+    set(OPENSSL_PKG "")
+    if(NOT OPENSSL_FOUND)
+        include(OpenSSL/OpenSSL.cmake)
+        set(OPENSSL_PKG dep_OpenSSL)
+    endif()
+
+    # we don't want to load a "wrong" openssl when loading curl
+    # so, just don't even bother 
+    # ...i think this is how it works? change if wrong
+    set(CURL_PKG "")
+    if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
+        include(CURL/CURL.cmake)
+        set(CURL_PKG dep_CURL)
+    endif ()
+endif()
 
 set(JPEG_PKG "")
-if (NOT JPEG_FOUND)
+if (NOT JPEG_FOUND AND NOT EMSCRIPTEN)
     include(JPEG/JPEG.cmake)
     set(JPEG_PKG dep_JPEG)
 endif()
 
 # flatpak builds wxwidgets separately, so it is not included in the deps target
 set(WXWIDGETS_PKG "")
-include(wxWidgets/wxWidgets.cmake)
-if (NOT FLATPAK)
-    set(WXWIDGETS_PKG "dep_wxWidgets")
+if (NOT EMSCRIPTEN)
+    include(wxWidgets/wxWidgets.cmake)
+    if (NOT FLATPAK)
+        set(WXWIDGETS_PKG "dep_wxWidgets")
+    endif()
 endif()
 
 set(FREETYPE_PKG "")
-if(NOT FREETYPE_FOUND)
+if(NOT FREETYPE_FOUND AND NOT EMSCRIPTEN)
     include(FREETYPE/FREETYPE.cmake)
     set(FREETYPE_PKG "dep_FREETYPE") 
 endif()
@@ -392,8 +397,10 @@ if((REV_PARSE_RESULT EQUAL 0) AND (REV_PARSE_OUTPUT STREQUAL "true"))
     file(RELATIVE_PATH BINARY_DIR_REL  ${CMAKE_SOURCE_DIR}/.. ${CMAKE_BINARY_DIR})
 endif ()
 
-include(OCCT/OCCT.cmake)
-include(OpenCV/OpenCV.cmake)
+if (NOT EMSCRIPTEN)
+    include(OCCT/OCCT.cmake)
+    include(OpenCV/OpenCV.cmake)
+endif ()
 
 
 set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")

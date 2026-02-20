@@ -3,14 +3,16 @@
 #include <float.h>
 #include <unordered_map>
 
-//#include <png.h>
+#if !defined(SLIC3R_HEADLESS)
+#include <png.h>
+#endif
 
 #include "libslic3r.h"
 #include "ClipperUtils.hpp"
 #include "EdgeGrid.hpp"
 #include "Geometry.hpp"
 #include "SVG.hpp"
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include "PNGReadWrite.hpp"
 #endif
 
@@ -1480,7 +1482,7 @@ bool EdgeGrid::Grid::has_intersecting_edges() const
 	return false;
 }
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coord_t resolution, const char *path, size_t scale)
 {
     coord_t w = (bbox.max(0) - bbox.min(0) + resolution - 1) / resolution;
@@ -1568,7 +1570,7 @@ void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coo
 
 	png::write_rgb_to_file_scaled(path, w, h, pixels, scale);
 }
-#endif // !defined(EMSCRIPTEN)
+#endif // !defined(SLIC3R_HEADLESS)
 
 // Find all pairs of intersectiong edges from the set of polygons.
 std::vector<std::pair<EdgeGrid::Grid::ContourEdge, EdgeGrid::Grid::ContourEdge>> intersecting_edges(const Polygons &polygons)

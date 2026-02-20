@@ -23,7 +23,7 @@
 //BBS: add bbs 3mf
 #include "Format/bbs_3mf.hpp"
 //BBS: add step
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include "Format/STEP.hpp"
 #endif
 //BBS: add stl
@@ -1571,7 +1571,7 @@ public:
 
     OBJECTBASE_DERIVED_COPY_MOVE_CLONE(Model)
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
     static Model read_from_step(const std::string&                                      input_file,
                                 LoadStrategy                                            options,
                                 ImportStepProgressFn                                    stepFn,

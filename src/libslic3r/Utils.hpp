@@ -14,9 +14,10 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/date_time.hpp>
 #include "boost/date_time/posix_time/ptime.hpp"
+#if !defined(SLIC3R_HEADLESS)
 
-//#include <openssl/md5.h>
-
+#include <openssl/md5.h>
+#endif
 #include "libslic3r.h"
 
 //define CLI errors

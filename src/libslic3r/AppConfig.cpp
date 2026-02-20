@@ -1,6 +1,6 @@
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Utils.hpp"
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include "libslic3r/Format/DRC.hpp"
 #endif
 #include "AppConfig.hpp"
@@ -241,7 +241,7 @@ void AppConfig::set_defaults()
     if (get("enable_multi_machine").empty())
         set_bool("enable_multi_machine", false);
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
     if (get("drc_bits").empty())
         set("drc_bits", DRC_BITS_DEFAULT_STR);
 #endif

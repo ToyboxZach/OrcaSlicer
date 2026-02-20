@@ -14,7 +14,7 @@
 
 #include "Format/AMF.hpp"
 #include "Format/svg.hpp"
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include "Format/DRC.hpp"
 #endif
 // BBS
@@ -183,7 +183,7 @@ Model::~Model()
         Slic3r::remove_backup(*this, true);
 }
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 Model Model::read_from_step(const std::string&                                      input_file,
                             LoadStrategy                                            options,
                             ImportStepProgressFn                                    stepFn,
@@ -316,7 +316,7 @@ Model Model::read_from_file(const std::string&                                  
         result = load_svg(input_file.c_str(), &model, message);
     //BBS: remove the old .amf.xml files
     //else if (boost::algorithm::iends_with(input_file, ".amf") || boost::algorithm::iends_with(input_file, ".amf.xml"))
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
     else if (boost::algorithm::iends_with(input_file, ".drc"))
         result = load_drc(input_file.c_str(), &model);
 #endif

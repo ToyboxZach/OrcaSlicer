@@ -4,7 +4,7 @@
 
 #include "libslic3r/Color.hpp"
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include "opencv2/opencv.hpp"
 class QuantKMeans
 {

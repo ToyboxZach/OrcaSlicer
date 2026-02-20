@@ -120,6 +120,7 @@ endif()
 
 option(SLIC3R_STATIC 			"Compile OrcaSlicer with static libraries (Boost, TBB, glew)" 1)
 option(SLIC3R_GUI    			"Compile OrcaSlicer with GUI components (OpenGL, wxWidgets)" 0)
+option(SLIC3R_HEADLESS          "Build headless variant without SLA/resin features and advanced dependencies" 0)
 option(SLIC3R_FHS               "Assume OrcaSlicer is to be installed in a FHS directory structure" 0)
 option(SLIC3R_WX_STABLE         "Build against wxWidgets stable (3.0) as oppsed to dev (3.1) on Linux" 0)
 option(SLIC3R_PROFILE 			"Compile OrcaSlicer with an invasive Shiny profiler" 0)
@@ -496,10 +497,17 @@ set(EMSCRIPT_CXX_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBO
 set(EMSCRIPT_C_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions" CACHE STRING "Emscripten C compile flags for OrcaSlicer")
 
 if (EMSCRIPTEN)
+    # Auto-enable headless mode for WASM builds
+    set(SLIC3R_HEADLESS ON CACHE BOOL "" FORCE)
+    
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMSCRIPT_CXX_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EMSCRIPT_C_FLAGS}")
 
     add_link_options(-fexceptions -sDISABLE_EXCEPTION_CATCHING=0)
+endif ()
+
+if (SLIC3R_HEADLESS)
+    add_definitions(-DSLIC3R_HEADLESS)
 endif ()
 
 

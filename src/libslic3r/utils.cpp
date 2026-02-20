@@ -159,7 +159,10 @@ unsigned get_logging_level()
     }
 }
 
-//boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
+#if !defined(SLIC3R_HEADLESS)
+
+boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
+#endif
 
 // Force set_logging_level(<=error) after loading of the DLL.
 // This is currently only needed if libslic3r is loaded as a shared library into Perl interpreter
@@ -349,7 +352,8 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 	}
 	auto full_path = (log_folder / file).make_preferred();
 
-	/*g_log_sink = boost::log::add_file_log(
+	#if !defined(SLIC3R_HEADLESS)
+	g_log_sink = boost::log::add_file_log(
 		keywords::file_name = full_path.string() + ".%N",
 		keywords::rotation_size = 100 * 1024 * 1024,
 		keywords::format =
@@ -360,7 +364,8 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 			<<"[Thread " << expr::attr<attrs::current_thread_id::value_type>("ThreadID") << "]"
 			<< ":" << expr::smessage
 		)
-	);*/
+	);
+	#endif
 
 	logging::add_common_attributes();
 
@@ -371,9 +376,10 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 
 void flush_logs()
 {
-	//if (g_log_sink)
-	//	g_log_sink->flush();
-
+#if !defined(SLIC3R_HEADLESS)
+	if (g_log_sink)
+		g_log_sink->flush();
+#endif
 	return;
 }
 
@@ -1576,9 +1582,11 @@ bool makedir(const std::string path) {
 
 bool bbl_calc_md5(std::string &filename, std::string &md5_out)
 {
-	/*
+	
     unsigned char digest[16];
-    MD5_CTX       ctx;
+#if !defined(SLIC3R_HEADLESS)
+
+	MD5_CTX       ctx;
     MD5_Init(&ctx);
     boost::nowide::ifstream ifs(filename, std::ios::binary);
     std::string                 buf(64 * 1024, 0);
@@ -1590,9 +1598,10 @@ bool bbl_calc_md5(std::string &filename, std::string &md5_out)
         MD5_Update(&ctx, (unsigned char *) buf.data(), read_bytes);
     }
     MD5_Final(digest, &ctx);
+#endif
     char md5_str[33];
     for (int j = 0; j < 16; j++) { sprintf(&md5_str[j * 2], "%02X", (unsigned int) digest[j]); }
-    md5_out = std::string(md5_str);*/
+    md5_out = std::string(md5_str);
     return true;
 }
 

@@ -4,7 +4,7 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <qoi/qoi.h>
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 #include <jpeglib.h>
 #include <jerror.h>
 #endif
@@ -52,7 +52,7 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_png(const ThumbnailDat
     return out;
 }
 
-#if !defined(EMSCRIPTEN)
+#if !defined(SLIC3R_HEADLESS)
 std::unique_ptr<CompressedImageBuffer> compress_thumbnail_jpg(const ThumbnailData& data)
 {
     // Take vector of RGBA pixels and flip the image vertically

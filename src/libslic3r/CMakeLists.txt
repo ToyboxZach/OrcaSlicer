@@ -475,7 +475,8 @@ set(lisbslic3r_sources
     FlushVolPredictor.cpp
 )
 
-if (EMSCRIPTEN)
+# Headless builds exclude SLA/resin features and heavy dependencies (PNG, TextShape, VoronoiCGAL)
+if (SLIC3R_HEADLESS)
     list(REMOVE_ITEM lisbslic3r_sources
         Geometry/VoronoiUtilsCgal.cpp
         Geometry/VoronoiUtilsCgal.hpp
@@ -603,12 +604,15 @@ target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC 
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
 
 # Find the OCCT and related libraries
-#set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
-#find_package(OpenCASCADE REQUIRED)
-#target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
+if (NOT EMSCRIPTEN)
 
-#find_package(JPEG REQUIRED)
-# find_package(draco REQUIRED)
+set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
+find_package(OpenCASCADE REQUIRED)
+target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
+find_package(JPEG REQUIRED)
+find_package(draco REQUIRED)
+
+endif()
 
 set(OCCT_LIBS
     TKXDESTEP
@@ -693,9 +697,13 @@ if (APPLE)
     target_link_libraries(libslic3r PRIVATE ${FOUNDATION} ${MODELIO})
 endif ()
 
-#if (TARGET OpenVDB::openvdb)
-#    target_link_libraries(libslic3r OpenVDB::openvdb)
-#endif()
+if (NOT EMSCRIPTEN)
+
+if (TARGET OpenVDB::openvdb)
+    target_link_libraries(libslic3r OpenVDB::openvdb)
+endif()
+
+endif()
 
 if(WIN32)
     target_link_libraries(libslic3r PRIVATE Psapi.lib bcrypt.lib)
