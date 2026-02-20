@@ -396,8 +396,13 @@ include(OCCT/OCCT.cmake)
 include(OpenCV/OpenCV.cmake)
 
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pthread -fwasm-exceptions")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -pthread -fwasm-exceptions")
+set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")
+set(DEP_EMSCRIPT_C_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C release flags")
+
+if (EMSCRIPTEN)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEP_EMSCRIPT_C_FLAGS_RELEASE}")
+endif ()
 
 set(_dep_list
     dep_Boost

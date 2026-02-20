@@ -183,8 +183,6 @@ set(lisbslic3r_sources
     Format/3mf.hpp
     Format/AMF.cpp
     Format/AMF.hpp
-    Format/DRC.cpp
-    Format/DRC.hpp
     Format/bbs_3mf.cpp
     Format/bbs_3mf.hpp
     format.hpp
@@ -483,6 +481,44 @@ if (EMSCRIPTEN)
         Geometry/VoronoiUtilsCgal.hpp
         ObjColorUtils.cpp
         ObjColorUtils.hpp
+        PNGReadWrite.cpp
+        PNGReadWrite.hpp
+        Format/SL1.cpp
+        Format/SL1.hpp
+        Shape/TextShape.cpp
+        Shape/TextShape.hpp
+        SLA/Clustering.cpp
+        SLA/Clustering.hpp
+        SLA/ConcaveHull.cpp
+        SLA/ConcaveHull.hpp
+        SLA/Hollowing.cpp
+        SLA/Hollowing.hpp
+        SLA/IndexedMesh.cpp
+        SLA/IndexedMesh.hpp
+        SLA/Pad.cpp
+        SLA/Pad.hpp
+        SLAPrint.cpp
+        SLAPrint.hpp
+        SLAPrintSteps.cpp
+        SLAPrintSteps.hpp
+        SLA/RasterBase.cpp
+        SLA/RasterBase.hpp
+        SLA/RasterToPolygons.cpp
+        SLA/RasterToPolygons.hpp
+        SLA/Rotfinder.cpp
+        SLA/Rotfinder.hpp
+        SLA/SpatIndex.cpp
+        SLA/SpatIndex.hpp
+        SLA/SupportPointGenerator.cpp
+        SLA/SupportPointGenerator.hpp
+        SLA/SupportTreeBuilder.cpp
+        SLA/SupportTreeBuilder.hpp
+        SLA/SupportTreeBuildsteps.cpp
+        SLA/SupportTreeBuildsteps.hpp
+        SLA/SupportTree.cpp
+        SLA/SupportTree.hpp
+        SLA/SupportTreeMesher.cpp
+        SLA/SupportTreeMesher.hpp
     )
 endif ()
 
