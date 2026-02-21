@@ -66,7 +66,7 @@ else ()
             DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
             BUILD_IN_SOURCE ON 
             PATCH_COMMAND   echo "#! /bin/sh" > tmp && echo "unset HOST_CC" >> tmp &&  cat ./configure >> tmp && mv tmp ./configure && chmod +x ./configure 
-            CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc emconfigure ./configure --disable-cxx --host=none  --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}" ${_gmp_build_tgt}
+            CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc emconfigure ./configure --enable-cxx --host=none  --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}" ${_gmp_build_tgt}
             BUILD_COMMAND     MPN_PATH="generic" emmake make -j 
             INSTALL_COMMAND   emmake make  install 
             CMAKE_ARGS

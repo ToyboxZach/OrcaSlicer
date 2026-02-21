@@ -24,6 +24,8 @@
 #include <math.h>
 
 #if defined(__linux__) || defined(__LINUX__)
+#include <fcntl.h>
+#include <unistd.h>
 #include <condition_variable>
 #include <mutex>
 #include <boost/thread.hpp>
@@ -51,9 +53,11 @@ using namespace nlohmann;
 #include "libslic3r/GCode.hpp"
 #include "libslic3r/GCode/PostProcessor.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/ModelArrange.hpp"
 #include "libslic3r/Platform.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/Preset.hpp"
 #if !defined(SLIC3R_HEADLESS)
 #include "libslic3r/SLAPrint.hpp"
 #endif
@@ -93,8 +97,11 @@ using namespace nlohmann;
     #include <X11/Xlib.h>
     #endif
 
-    #include "slic3r/GUI/GUI_Init.hpp"
 #endif /* SLIC3R_GUI */
+
+#if defined(SLIC3R_HEADLESS) && !defined(SLIC3R_GUI)
+#include "HeadlessGuiStubs.hpp"
+#endif
 
 using namespace Slic3r;
 
@@ -496,7 +503,6 @@ const float bed3d_ax3s_default_stem_length = 25.0f;
 const float bed3d_ax3s_default_tip_radius = 2.5f * bed3d_ax3s_default_stem_radius;
 const float bed3d_ax3s_default_tip_length = 5.0f;
 
-#if !defined(SLIC3R_HEADLESS)
 static int load_key_values_from_json(const std::string &file, std::map<std::string, std::string>& key_values)
 {
     json j;
@@ -786,10 +792,19 @@ void merge_or_add_object(assemble_plate_info_t& assemble_plate_info, Model &mode
 
 bool convert_obj_cluster_colors(std::vector<Slic3r::RGBA>& input_colors, std::vector<RGBA>& all_colours, int max_filament_count, std::vector<unsigned char>& output_filament_ids)
 {
-    using namespace Slic3r::GUI;
-
     BOOST_LOG_TRIVIAL(info) << boost::format("%1%:%2%, got original input obj colors %3%")%__FUNCTION__ %__LINE__ %input_colors.size();
     if (input_colors.size() > 0) {
+        struct ColorDistValue {
+            float distance { 0.0f };
+            int id { 0 };
+        };
+        auto calc_color_distance_local = [](const Slic3r::RGBA& a, const Slic3r::RGBA& b) -> float {
+            const float dr = a[0] - b[0];
+            const float dg = a[1] - b[1];
+            const float db = a[2] - b[2];
+            const float da = a[3] - b[3];
+            return dr * dr + dg * dg + db * db + da * da;
+        };
         std::vector<Slic3r::RGBA> cluster_colors;
         std::vector<int>          cluster_labels;
         char                      cluster_number = -1;
@@ -814,7 +829,7 @@ bool convert_obj_cluster_colors(std::vector<Slic3r::RGBA>& input_colors, std::ve
                 std::vector<ColorDistValue> color_dists;
                 color_dists.resize(max_filament_count);
                 for (size_t j = 0; j < max_filament_count; j++) {
-                    color_dists[j].distance = calc_color_distance(cluster_colors[i], all_colours[j]);
+                    color_dists[j].distance = calc_color_distance_local(cluster_colors[i], all_colours[j]);
                     color_dists[j].id       = j + 1;
                 }
                 std::sort(color_dists.begin(), color_dists.end(), [](ColorDistValue &a, ColorDistValue &b) { return a.distance < b.distance; });
@@ -1176,9 +1191,6 @@ static void load_downward_settings_list_from_config(std::string config_file, std
     }
 }
 
-#endif // !EMSCRIPTEN
-
-#if !defined(SLIC3R_HEADLESS)
 int CLI::run(int argc, char **argv)
 {
     // Mark the main thread for the debugger and for runtime checks.
@@ -1224,7 +1236,11 @@ int CLI::run(int argc, char **argv)
         return CLI_INVALID_PARAMS;
     }
     BOOST_LOG_TRIVIAL(info) << "finished setup params, argc="<< argc << std::endl;
+#if defined(SLIC3R_GUI) && !defined(SLIC3R_HEADLESS)
     std::string temp_path = wxFileName::GetTempDir().utf8_str().data();
+#else
+    std::string temp_path = boost::filesystem::temp_directory_path().string();
+#endif
     set_temporary_dir(temp_path);
 
     m_extra_config.apply(m_config, true);
@@ -3084,7 +3100,7 @@ int CLI::run(int argc, char **argv)
             ConfigOptionStrings *curr_variant_opt = m_print_config.option<ConfigOptionStrings>("filament_extruder_variant");
             if (!curr_variant_opt) {
                 curr_variant_opt = m_print_config.option<ConfigOptionStrings>("filament_extruder_variant", true);
-                std::vector<string>& filament_variants = curr_variant_opt->values;
+                std::vector<std::string>& filament_variants = curr_variant_opt->values;
                 filament_variants.resize(filament_count, get_extruder_variant_string(etDirectDrive, nvtStandard));
             }
             const ConfigOptionStrings *new_variant_opt = dynamic_cast<const ConfigOptionStrings*>(config.option("filament_extruder_variant", true));
@@ -5768,7 +5784,7 @@ int CLI::run(int argc, char **argv)
                                                 std::vector<int> result_filaments;
                                                 //result_filaments.reserve(conflict_filaments.size());
                                                 std::set_intersection(conflict_filament_vector.begin(), conflict_filament_vector.end(), unprintable_filament_vec[index].begin(),
-                                                    unprintable_filament_vec[index].end(), insert_iterator<vector<int>>(result_filaments, result_filaments.begin()));
+                                                    unprintable_filament_vec[index].end(), std::inserter(result_filaments, result_filaments.begin()));
                                                 conflict_filament_vector = result_filaments;
                                             }
                                         }
@@ -6245,6 +6261,7 @@ int CLI::run(int argc, char **argv)
         PlateDataPtrs plate_data_list;
         partplate_list.store_to_3mf_structure(plate_data_list);
 
+#if defined(SLIC3R_GUI) && !defined(SLIC3R_HEADLESS)
         if (sliced_plate == -1) {
             for (int i = 0; i < plate_data_list.size(); i++) {
                 Slic3r::GUI::PartPlate *part_plate      = partplate_list.get_plate(i);
@@ -6266,6 +6283,7 @@ int CLI::run(int argc, char **argv)
                 plate_data_list[sliced_plate - 1]->is_label_object_enabled = false;
             }
         }
+#endif
 
         if (!outfile_dir.empty()) {
             export_3mf_file = outfile_dir + "/"+export_3mf_file;
@@ -6384,6 +6402,7 @@ int CLI::run(int argc, char **argv)
             }
         }
 
+#if defined(SLIC3R_GUI) && !defined(SLIC3R_HEADLESS)
         if (need_regenerate_thumbnail || need_regenerate_no_light_thumbnail || need_regenerate_top_thumbnail) {
             std::vector<std::string> colors;
             if (filament_color) {
@@ -6791,6 +6810,15 @@ int CLI::run(int argc, char **argv)
             }
         }
 
+#else
+        if (need_regenerate_thumbnail || need_regenerate_no_light_thumbnail || need_regenerate_top_thumbnail) {
+            BOOST_LOG_TRIVIAL(info) << boost::format("Line %1%: headless build, skip thumbnail regeneration")%__LINE__;
+        } else {
+            BOOST_LOG_TRIVIAL(info) << boost::format("Line %1%: headless build, use previous thumbnails")%__LINE__;
+        }
+#endif
+
+#if defined(SLIC3R_GUI) && !defined(SLIC3R_HEADLESS)
         //generate first layer bboxes
         for (int i = 0; i < partplate_list.get_plate_count(); i++) {
             if ((plate_to_slice != 0) && (plate_to_slice != (i + 1))) {
@@ -6909,8 +6937,11 @@ int CLI::run(int argc, char **argv)
                 plate_bbox->filament_ids.push_back(it->id);
                 plate_bbox->filament_colors.push_back(it->color);
             }
-            plate_bboxes.push_back(plate_bbox);
-        }
+                plate_bboxes.push_back(plate_bbox);
+            }
+        #else
+            BOOST_LOG_TRIVIAL(info) << boost::format("Line %1%: headless build, skip first layer bbox generation")%__LINE__;
+        #endif
 
 
 #if defined(__linux__) || defined(__LINUX__)
@@ -7003,13 +7034,6 @@ int CLI::run(int argc, char **argv)
 
     return 0;
 }
-#else
-int CLI::run(int /*argc*/, char ** /*argv*/)
-{
-    BOOST_LOG_TRIVIAL(error) << "CLI is not supported in EMSCRIPTEN headless builds.";
-    return CLI_UNSUPPORTED_OPERATION;
-}
-#endif
 
 bool CLI::setup(int argc, char **argv)
 {

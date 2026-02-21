@@ -457,6 +457,8 @@ set(lisbslic3r_sources
     TriangleSelector.hpp
     TriangleSetSampling.cpp
     TriangleSetSampling.hpp
+    Triangulation.cpp
+    Triangulation.hpp
     TriangulateWall.cpp
     TriangulateWall.hpp
     utils.cpp
@@ -521,6 +523,14 @@ if (SLIC3R_HEADLESS)
         SLA/SupportTreeMesher.cpp
         SLA/SupportTreeMesher.hpp
     )
+    list(APPEND lisbslic3r_sources
+        Format/svg.cpp
+        Format/svg.hpp
+        IntersectionPoints.cpp
+        IntersectionPoints.hpp
+        MeshBoolean.cpp
+        MeshBoolean.hpp
+    )
 endif ()
 
 if (APPLE)
@@ -545,7 +555,7 @@ cmake_policy(PUSH)
 cmake_policy(SET CMP0011 NEW)
 #set(CMAKE_FIND_DEBUG_MODE TRUE)
 
-if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+if (EMSCRIPTEN)
     set(CGAL_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
     set(CGAL_FOUND TRUE)
     if (NOT TARGET CGAL::CGAL)
@@ -556,7 +566,19 @@ if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     endif ()
     message(STATUS "WASM CGAL: includes=${CGAL_INCLUDE_DIRS}, libs=(header-only)")
 else ()
-    find_package(CGAL REQUIRED)
+    if (NOT SLIC3R_HEADLESS)
+        set(CGAL_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+        set(CGAL_FOUND TRUE)
+        if (NOT TARGET CGAL::CGAL)
+            add_library(CGAL::CGAL INTERFACE IMPORTED)
+            set_target_properties(CGAL::CGAL PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${CGAL_INCLUDE_DIRS}"
+            )
+        endif ()
+        message(STATUS "WASM CGAL: includes=${CGAL_INCLUDE_DIRS}, libs=(header-only)")
+    else ()
+        find_package(CGAL REQUIRED)
+    endif ()
 endif ()
 #find_package(OpenCV REQUIRED core)
 cmake_policy(POP)
@@ -602,6 +624,47 @@ target_compile_definitions(libslic3r PUBLIC -DUSE_TBB -DTBB_USE_CAPTURED_EXCEPTI
 target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
+
+set(_expat_libs "")
+if (TARGET EXPAT::EXPAT)
+    list(APPEND _expat_libs EXPAT::EXPAT)
+elseif (TARGET expat)
+    list(APPEND _expat_libs expat)
+elseif (EXPAT_LIBRARIES)
+    list(APPEND _expat_libs ${EXPAT_LIBRARIES})
+endif ()
+
+set(_nlopt_libs "")
+if (TARGET NLopt::nlopt)
+    list(APPEND _nlopt_libs NLopt::nlopt)
+elseif (TARGET nlopt)
+    list(APPEND _nlopt_libs nlopt)
+elseif (NLOPT_LIBRARIES)
+    list(APPEND _nlopt_libs ${NLOPT_LIBRARIES})
+elseif (NLopt_LIBRARIES)
+    list(APPEND _nlopt_libs ${NLopt_LIBRARIES})
+endif ()
+if (_nlopt_libs)
+    if (NLOPT_INCLUDE_DIRS)
+        target_include_directories(libslic3r SYSTEM PUBLIC ${NLOPT_INCLUDE_DIRS})
+    elseif (NLopt_INCLUDE_DIR)
+        target_include_directories(libslic3r SYSTEM PUBLIC ${NLopt_INCLUDE_DIR})
+    endif ()
+endif ()
+
+set(_gmp_libs "")
+find_library(MPFR_LIBRARY mpfr HINTS ${CMAKE_PREFIX_PATH} PATH_SUFFIXES lib)
+if (MPFR_LIBRARY)
+    list(APPEND _gmp_libs ${MPFR_LIBRARY})
+endif ()
+find_library(GMPXX_LIBRARY gmpxx HINTS ${CMAKE_PREFIX_PATH} PATH_SUFFIXES lib)
+if (GMPXX_LIBRARY)
+    list(APPEND _gmp_libs ${GMPXX_LIBRARY})
+endif ()
+find_library(GMP_LIBRARY gmp HINTS ${CMAKE_PREFIX_PATH} PATH_SUFFIXES lib)
+if (GMP_LIBRARY)
+    list(APPEND _gmp_libs ${GMP_LIBRARY})
+endif ()
 
 # Find the OCCT and related libraries
 if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
@@ -656,7 +719,9 @@ target_link_libraries(libslic3r
         miniz
     PRIVATE
         ${CMAKE_DL_LIBS}
-        ${EXPAT_LIBRARIES}
+                ${_expat_libs}
+                ${_nlopt_libs}
+                ${_gmp_libs}
       #  ${OCCT_LIBS}
         boost_libs
         cereal::cereal
