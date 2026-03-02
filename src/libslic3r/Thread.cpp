@@ -161,20 +161,37 @@ std::optional<std::string> get_current_thread_name()
 // posix
 bool set_thread_name(std::thread &thread, const char *thread_name)
 {
+	(void)thread;
+	(void)thread_name;
+#ifdef __EMSCRIPTEN__
+	return false;
+#else
    	pthread_setname_np(thread.native_handle(), thread_name);
 	return true;
+#endif
 }
 
 bool set_thread_name(boost::thread &thread, const char *thread_name)
 {
+	(void)thread;
+	(void)thread_name;
+#ifdef __EMSCRIPTEN__
+	return false;
+#else
    	pthread_setname_np(thread.native_handle(), thread_name);
 	return true;
+#endif
 }
 
 bool set_current_thread_name(const char *thread_name)
 {
+	(void)thread_name;
+#ifdef __EMSCRIPTEN__
+	return false;
+#else
 	pthread_setname_np(pthread_self(), thread_name);
 	return true;
+#endif
 }
 
 std::optional<std::string> get_current_thread_name()

@@ -493,8 +493,8 @@ include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/deps_src/cereal/include)
 include_directories(SYSTEM ${LIBDIR}/libigl)
 
 #WASM STUFF
-set(EMSCRIPT_CXX_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DSAFE_HEAP=1" CACHE STRING "Emscripten C++ compile flags for OrcaSlicer")
-set(EMSCRIPT_C_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions" CACHE STRING "Emscripten C compile flags for OrcaSlicer")
+set(EMSCRIPT_CXX_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1" CACHE STRING "Emscripten C++ compile flags for OrcaSlicer")
+set(EMSCRIPT_C_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions" CACHE STRING "Emscripten C compile flags for OrcaSlicer")
 
 if (EMSCRIPTEN)
     # Auto-enable headless mode for WASM builds
@@ -503,7 +503,7 @@ if (EMSCRIPTEN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMSCRIPT_CXX_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EMSCRIPT_C_FLAGS}")
 
-    add_link_options(-fexceptions -sDISABLE_EXCEPTION_CATCHING=0)
+    add_link_options(-fwasm-exceptions)
 endif ()
 
 if (SLIC3R_HEADLESS)

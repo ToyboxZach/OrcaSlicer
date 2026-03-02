@@ -27,6 +27,9 @@ else ()
     message(STATUS "${PROJECT_NAME}_DEP_INSTALL_PREFIX=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}")
 
     if (EMSCRIPTEN)
+        # Use CMake-provided Emscripten flags which include -matomics -mbulk-memory
+        string(APPEND _gmp_ccflags " ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+        string(APPEND _gmp_ccflags " -pthread -matomics -mbulk-memory")
         ExternalProject_Add(dep_MPFR
             URL https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.bz2
                 https://www.mpfr.org/mpfr-4.2.2/mpfr-4.2.2.tar.bz2

@@ -60,6 +60,9 @@ else ()
     endif ()
 
     if (EMSCRIPTEN)
+        # Use CMake-provided Emscripten flags which include -matomics -mbulk-memory
+        string(APPEND _gmp_ccflags " ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+        string(APPEND _gmp_ccflags " -pthread -matomics -mbulk-memory")
         ExternalProject_Add(dep_GMP
             URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
             URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c

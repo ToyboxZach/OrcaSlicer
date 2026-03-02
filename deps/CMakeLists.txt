@@ -317,6 +317,22 @@ if (NOT EXPAT_FOUND)
 endif ()
 
 set(DEP_Boost_COMPONENTS system iostreams filesystem thread log locale regex date_time)
+
+set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")
+set(DEP_EMSCRIPT_C_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C release flags")
+
+if (EMSCRIPTEN)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEP_EMSCRIPT_C_FLAGS_RELEASE}")
+    # Propagate flags to all orcaslicer_add_cmake_project ExternalProject children.
+    # Without this, C-only projects like NLopt don't receive -matomics/-mbulk-memory
+    # and wasm-ld rejects the resulting object files when --shared-memory is requested.
+    set(DEP_CMAKE_OPTS
+        "-DCMAKE_C_FLAGS_RELEASE:STRING=${CMAKE_C_FLAGS_RELEASE}"
+        "-DCMAKE_CXX_FLAGS_RELEASE:STRING=${CMAKE_CXX_FLAGS_RELEASE}"
+    )
+endif ()
+
 include(Boost/Boost.cmake)
 
 # The order of includes respects the dependencies between libraries
@@ -403,15 +419,6 @@ endif ()
 if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(OCCT/OCCT.cmake)
     include(OpenCV/OpenCV.cmake)
-endif ()
-
-
-set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")
-set(DEP_EMSCRIPT_C_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C release flags")
-
-if (EMSCRIPTEN)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEP_EMSCRIPT_C_FLAGS_RELEASE}")
 endif ()
 
 set(_dep_list

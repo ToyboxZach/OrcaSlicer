@@ -15,6 +15,20 @@ set(_boost_libraries, "--with-system --with-filesystem --with-log --with-locale 
 set(_boost_settings, "--with-toolset=emscripten toolset=emscripten --threading=single address-model=32  ")
 
 if (EMSCRIPTEN)
+    set(_boost_emscripten_flags "${DEP_EMSCRIPT_CXX_FLAGS_RELEASE} -Wno-unused-private-field -Wno-missing-template-arg-list-after-template-kw")
+
+    # Write a patch script at configure time to avoid CMake/shell quoting hell.
+    # The semicolon in the jam file cannot safely be passed through /bin/sh -c "..."
+    # when CMake is also processing the string.
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/boost_patch.sh"
+"#!/bin/sh\n"
+"set -e\n"
+"mkdir -p tools/build/v2\n"
+"printf 'using gcc : : em++ ;\\n' > tools/build/v2/user-config.jam\n"
+"chmod +x bootstrap.sh\n"
+"[ -f tools/build/src/engine/build.sh ] && chmod +x tools/build/src/engine/build.sh || true\n"
+    )
+
     # Emscripten-specific configuration
     ExternalProject_Add(dep_Boost
         URL https://github.com/boostorg/boost/releases/download/boost-1.87.0/boost-1.87.0-cmake.zip
@@ -23,10 +37,10 @@ if (EMSCRIPTEN)
         DOWNLOAD_DIR         ${DEP_DOWNLOAD_DIR}/${projectname}
         
         BUILD_IN_SOURCE     true
-        CONFIGURE_COMMAND  emconfigure ./bootstrap.sh  threading=single address-model=32 
-        BUILD_COMMAND  env CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS_${_build_type_upper}} -pthread -pthreads -Wno-unused-private-field -m32"  emmake ./b2 cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-pthread cxxflags=-DTHREAD  link=static  toolset=emscripten threading=single address-model=32 thread system filesystem regex chrono log atomic nowide iostreams random program_options --with-system --with-filesystem  --with-locale --with-regex --with-chrono --with-atomic --with-date_time --with-iostreams --with-thread --with-log --with-nowide --with-program_options
-        PATCH_COMMAND  echo -e "using gcc : : g++ : root=/usr/local/ <compileflags>-m32 <linkflags>-m32 ;">tools/build/v2/user-config.jam && chmod +x  ./bootstrap.sh && chmod +x ./tools/build/src/engine/build.sh
-        INSTALL_COMMAND env CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS_${_build_type_upper}} -pthread -pthreads -Wno-unused-private-field -m32"  emmake ./b2 cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-pthread cxxflags=-DTHREAD install link=static  toolset=emscripten threading=single address-model=32  --prefix=${DESTDIR} system filesystem regex chrono iostreams random atomic nowide thread log program_options --with-log --with-system --with-filesystem  --with-locale --with-regex --with-chrono --with-atomic --with-date_time --with-iostreams --with-thread --with-nowide --with-program_options
+        CONFIGURE_COMMAND  emconfigure ./bootstrap.sh threading=multi address-model=32
+        BUILD_COMMAND  env CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS_${_build_type_upper}} ${_boost_emscripten_flags}" emmake ./b2 cxxflags=${_boost_emscripten_flags} cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-DTHREAD linkflags=${DEP_EMSCRIPT_CXX_FLAGS_RELEASE} link=static toolset=emscripten threading=multi address-model=32 thread system filesystem regex chrono log atomic nowide iostreams random program_options --with-system --with-filesystem --with-locale --with-regex --with-chrono --with-atomic --with-date_time --with-iostreams --with-thread --with-log --with-nowide --with-program_options
+        PATCH_COMMAND  /bin/sh "${CMAKE_CURRENT_BINARY_DIR}/boost_patch.sh"
+        INSTALL_COMMAND env CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS_${_build_type_upper}} ${_boost_emscripten_flags}" emmake ./b2 cxxflags=${_boost_emscripten_flags} cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-DTHREAD install linkflags=${DEP_EMSCRIPT_CXX_FLAGS_RELEASE} link=static toolset=emscripten threading=multi address-model=32 --prefix=${DESTDIR} system filesystem regex chrono iostreams random atomic nowide thread log program_options --with-log --with-system --with-filesystem --with-locale --with-regex --with-chrono --with-atomic --with-date_time --with-iostreams --with-thread --with-nowide --with-program_options
         CMAKE_ARGS
             -DBOOST_EXCLUDE_LIBRARIES:STRING=contract|fiber|numpy|stacktrace|wave|test
             -DBOOST_LOCALE_ENABLE_ICU:BOOL=OFF
