@@ -1,18 +1,22 @@
 
 set(_srcdir ${CMAKE_CURRENT_LIST_DIR}/gmp)
 
+if (IN_GIT_REPO)
+    set(GMP_DIRECTORY_FLAG --directory ${BINARY_DIR_REL}/dep_GMP-prefix/src/dep_GMP)
+endif ()
+
 if (MSVC)
-    set(_output  ${DESTDIR}/include/gmp.h 
-                 ${DESTDIR}/lib/libgmp-10.lib 
+    set(_output  ${DESTDIR}/include/gmp.h
+                 ${DESTDIR}/lib/libgmp-10.lib
                  ${DESTDIR}/bin/libgmp-10.dll)
 
     add_custom_command(
         OUTPUT  ${_output}
         COMMAND ${CMAKE_COMMAND} -E copy ${_srcdir}/include/gmp.h ${DESTDIR}/include/
-        COMMAND ${CMAKE_COMMAND} -E copy ${_srcdir}/lib/win${DEPS_BITS}/libgmp-10.lib ${DESTDIR}/lib/
-        COMMAND ${CMAKE_COMMAND} -E copy ${_srcdir}/lib/win${DEPS_BITS}/libgmp-10.dll ${DESTDIR}/bin/
+        COMMAND ${CMAKE_COMMAND} -E copy ${_srcdir}/lib/win-${DEPS_ARCH}/libgmp-10.lib ${DESTDIR}/lib/
+        COMMAND ${CMAKE_COMMAND} -E copy ${_srcdir}/lib/win-${DEPS_ARCH}/libgmp-10.dll ${DESTDIR}/bin/
     )
-    
+
     add_custom_target(dep_GMP SOURCES ${_output})
 
 else ()
@@ -41,27 +45,48 @@ else ()
         endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
-            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a") # Works on RPi-4
+            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a -DNO_ASM") # Works on RPi-4
             set(_gmp_build_tgt armv7)
         endif()
-        set(_gmp_build_tgt "--build=${_gmp_build_tgt}-pc-linux-gnu")
+        if (_gmp_build_tgt)
+            set(_gmp_build_tgt "--build=${_gmp_build_tgt}-pc-linux-gnu")
+        else()
+            set(_gmp_build_tgt "") # let GMP guess when processor is unknown
+        endif()
     else ()
         set(_gmp_build_tgt "") # let it guess
     endif()
 
     set(_cross_compile_arg "")
-    if (CMAKE_CROSSCOMPILING)
+    if (CMAKE_CROSSCOMPILING AND TOOLCHAIN_PREFIX)
         # TOOLCHAIN_PREFIX should be defined in the toolchain file
         set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
     endif ()
 
-    ExternalProject_Add(dep_GMP
-        URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
-        URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
-        DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
-        BUILD_IN_SOURCE ON 
-        CONFIGURE_COMMAND  env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" ./configure ${_cross_compile_arg} --enable-shared=no --enable-cxx=yes --enable-static=yes "--prefix=${DESTDIR}" ${_gmp_build_tgt}
-        BUILD_COMMAND     make -j
-        INSTALL_COMMAND   make install
-    )
+    if (EMSCRIPTEN)
+        # Use CMake-provided Emscripten flags which include -matomics -mbulk-memory
+        string(APPEND _gmp_ccflags " ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+        string(APPEND _gmp_ccflags " -pthread -matomics -mbulk-memory")
+        ExternalProject_Add(dep_GMP
+            URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
+            URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
+            DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
+            BUILD_IN_SOURCE ON 
+            PATCH_COMMAND   echo "#! /bin/sh" > tmp && echo "unset HOST_CC" >> tmp &&  cat ./configure >> tmp && mv tmp ./configure && chmod +x ./configure 
+            CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc emconfigure ./configure --enable-cxx --host=none  --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}" ${_gmp_build_tgt}
+            BUILD_COMMAND     MPN_PATH="generic" emmake make -j 
+            INSTALL_COMMAND   emmake make  install 
+        )
+    else()
+        ExternalProject_Add(dep_GMP
+            URL https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.2.1/gmp-6.2.1.tar.bz2
+            URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
+            DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
+            BUILD_IN_SOURCE ON
+            PATCH_COMMAND git apply ${GMP_DIRECTORY_FLAG} --verbose ${CMAKE_CURRENT_LIST_DIR}/0001-GMP_GCC15.patch
+            CONFIGURE_COMMAND  env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" ./configure ${_cross_compile_arg} --enable-shared=no --enable-cxx=yes --enable-static=yes "--prefix=${DESTDIR}" ${_gmp_build_tgt}
+            BUILD_COMMAND     make -j
+            INSTALL_COMMAND   make install
+        )
+    endif()
 endif ()

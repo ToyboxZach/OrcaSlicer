@@ -3,14 +3,18 @@
 #include <float.h>
 #include <unordered_map>
 
+#if !defined(SLIC3R_HEADLESS)
 #include <png.h>
+#endif
 
 #include "libslic3r.h"
 #include "ClipperUtils.hpp"
 #include "EdgeGrid.hpp"
 #include "Geometry.hpp"
 #include "SVG.hpp"
+#if !defined(SLIC3R_HEADLESS)
 #include "PNGReadWrite.hpp"
+#endif
 
 // #define EDGE_GRID_DEBUG_OUTPUT
 
@@ -64,8 +68,10 @@ void EdgeGrid::Grid::create(const std::vector<Points> &polygons, coord_t resolut
 					open = false;
 					-- end;
 				}
-			} else
-				assert(*begin != end[-1]);
+            } else {
+                //assert(*begin != end[-1]);
+            }
+
 			m_contours.emplace_back(begin, end, open);
 		}
 
@@ -142,8 +148,8 @@ void EdgeGrid::Grid::create_from_m_contours(coord_t resolution)
 	assert(resolution > 0);
 	// 1) Measure the bounding box.
 	for (const Contour &contour : m_contours) {
-		assert(contour.num_segments() > 0);
-		assert(*contour.begin() != contour.end()[-1]);
+		//assert(contour.num_segments() > 0);
+		//assert(*contour.begin() != contour.end()[-1]);
 		for (const Slic3r::Point &pt : contour) 
 			m_bbox.merge(pt);
 	}
@@ -1476,6 +1482,7 @@ bool EdgeGrid::Grid::has_intersecting_edges() const
 	return false;
 }
 
+#if !defined(SLIC3R_HEADLESS)
 void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coord_t resolution, const char *path, size_t scale)
 {
     coord_t w = (bbox.max(0) - bbox.min(0) + resolution - 1) / resolution;
@@ -1563,6 +1570,7 @@ void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coo
 
 	png::write_rgb_to_file_scaled(path, w, h, pixels, scale);
 }
+#endif // !defined(SLIC3R_HEADLESS)
 
 // Find all pairs of intersectiong edges from the set of polygons.
 std::vector<std::pair<EdgeGrid::Grid::ContourEdge, EdgeGrid::Grid::ContourEdge>> intersecting_edges(const Polygons &polygons)

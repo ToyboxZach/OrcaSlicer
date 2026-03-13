@@ -2,10 +2,47 @@
 #include "I18N.hpp"
 
 #include <atomic>
+#include <memory>
+#include <cstdlib>
 #include <locale>
 #include <ctime>
 #include <cstdarg>
 #include <stdio.h>
+#include <filesystem>
+#include <thread>
+#include <iostream>
+
+#ifdef __EMSCRIPTEN__
+	#include <emscripten/emscripten.h>
+	#include <emscripten/heap.h>
+	#include <emscripten/stack.h>
+
+EM_JS(int, js_orca_wasm_max_threads, (), {
+	const parsePositiveInt = (x) => {
+		if (x === undefined || x === null) return 0;
+		const n = Number(x);
+		return (Number.isFinite(n) && n > 0) ? (n | 0) : 0;
+	};
+
+	if (typeof globalThis !== 'undefined') {
+		let n = parsePositiveInt(globalThis.ORCA_WASM_MAX_THREADS);
+		if (n > 0) return n;
+
+		// In modularized worker builds, user config is often attached to Module.
+		n = parsePositiveInt(globalThis.Module && globalThis.Module.ORCA_WASM_MAX_THREADS);
+		if (n > 0) return n;
+	}
+
+	if (typeof Module !== 'undefined') {
+		const n = parsePositiveInt(Module.ORCA_WASM_MAX_THREADS);
+		if (n > 0) return n;
+	}
+
+	return 0;
+});
+
+
+#endif
 
 #include "format.hpp"
 #include "Platform.hpp"
@@ -47,6 +84,7 @@
 #include <boost/log/expressions.hpp>
 #include <boost/log/sinks/text_file_backend.hpp>
 #include <boost/log/utility/setup/file.hpp>
+#include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/sources/severity_logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
@@ -75,6 +113,7 @@
 #endif
 #ifdef TBB_HAS_GLOBAL_CONTROL
     #include <tbb/global_control.h>
+	#include <tbb/task_arena.h>
 #else
     #include <tbb/task_scheduler_init.h>
 #endif
@@ -158,7 +197,10 @@ unsigned get_logging_level()
     }
 }
 
+#if !defined(SLIC3R_HEADLESS)
+
 boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
+#endif
 
 // Force set_logging_level(<=error) after loading of the DLL.
 // This is currently only needed if libslic3r is loaded as a shared library into Perl interpreter
@@ -182,11 +224,72 @@ void disable_multi_threading()
 {
     // Disable parallelization so the Shiny profiler works
 #ifdef TBB_HAS_GLOBAL_CONTROL
-    tbb::global_control(tbb::global_control::max_allowed_parallelism, 1);
+	static std::unique_ptr<tbb::global_control> tbb_ctrl;
+	if (!tbb_ctrl)
+		tbb_ctrl = std::make_unique<tbb::global_control>(tbb::global_control::max_allowed_parallelism, 1);
 #else // TBB_HAS_GLOBAL_CONTROL
     static tbb::task_scheduler_init *tbb_init = new tbb::task_scheduler_init(1);
     UNUSED(tbb_init);
 #endif // TBB_HAS_GLOBAL_CONTROL
+}
+
+void cap_tbb_parallelism_for_wasm()
+{
+#if defined(__EMSCRIPTEN__)
+    size_t wasm_thread_cap = 16;
+	const char* cap_source = "default";
+
+	// Browser JS override (set globalThis.ORCA_WASM_MAX_THREADS before module init).
+	const int js_cap = js_orca_wasm_max_threads();
+	if (js_cap > 0) {
+		wasm_thread_cap = static_cast<size_t>(js_cap);
+		cap_source = "js";
+	}
+
+	// Optional environment override (useful in node/shell builds).
+    if (const char *env_cap = std::getenv("ORCA_WASM_MAX_THREADS")) {
+        try {
+            const unsigned long v = std::stoul(env_cap);
+			if (v > 0) {
+                wasm_thread_cap = static_cast<size_t>(v);
+				cap_source = "env";
+			}
+        } catch (...) {
+            // ignore invalid env value
+        }
+    }
+#if defined(TBB_HAS_GLOBAL_CONTROL)
+	static std::unique_ptr<tbb::global_control> wasm_tbb_ctrl;
+	if (wasm_tbb_ctrl)
+		return;
+
+	const size_t nthreads_hw = tbb::this_task_arena::max_concurrency();
+	constexpr size_t reserved_threads = 2;
+	size_t cap_threads = (nthreads_hw > reserved_threads) ? (nthreads_hw - reserved_threads) : 1;
+	if (cap_threads > wasm_thread_cap)
+		cap_threads = wasm_thread_cap;
+	wasm_tbb_ctrl = std::make_unique<tbb::global_control>(tbb::global_control::max_allowed_parallelism, cap_threads);
+	BOOST_LOG_TRIVIAL(info) << "cap_tbb_parallelism_for_wasm: max_allowed_parallelism=" << cap_threads
+							<< ", hardware_concurrency=" << nthreads_hw
+							<< ", wasm_thread_cap=" << wasm_thread_cap
+							<< ", cap_source=" << cap_source;
+#else
+	static tbb::task_scheduler_init *wasm_tbb_init = nullptr;
+	if (wasm_tbb_init)
+		return;
+
+	const size_t nthreads_hw = std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 1;
+	constexpr size_t reserved_threads = 2;
+	size_t cap_threads = (nthreads_hw > reserved_threads) ? (nthreads_hw - reserved_threads) : 1;
+	if (cap_threads > wasm_thread_cap)
+		cap_threads = wasm_thread_cap;
+	wasm_tbb_init = new tbb::task_scheduler_init(static_cast<int>(cap_threads));
+	BOOST_LOG_TRIVIAL(info) << "cap_tbb_parallelism_for_wasm: task_scheduler_init=" << cap_threads
+							<< ", hardware_concurrency=" << nthreads_hw
+							<< ", wasm_thread_cap=" << wasm_thread_cap
+							<< ", cap_source=" << cap_source;
+#endif
+#endif
 }
 
 static std::string g_var_dir;
@@ -294,16 +397,22 @@ std::string custom_shapes_dir()
     return (boost::filesystem::path(g_data_dir) / "shapes").string();
 }
 
+std::string handy_models_dir()
+{
+    return (boost::filesystem::path(resources_dir()) / "handy_models").string();
+}
+
 static std::atomic<bool> debug_out_path_called(false);
 
 std::string debug_out_path(const char *name, ...)
 {
-	static constexpr const char *SLIC3R_DEBUG_OUT_PATH_PREFIX = "out/";
+	//static constexpr const char *SLIC3R_DEBUG_OUT_PATH_PREFIX = "out/";
+	auto svg_folder = boost::filesystem::path(g_data_dir) / "SVG/";
     if (! debug_out_path_called.exchange(true)) {
-		std::string path = boost::filesystem::system_complete(SLIC3R_DEBUG_OUT_PATH_PREFIX).string();
-        if (!boost::filesystem::exists(path)) {
-            boost::filesystem::create_directory(path);
+		if (!boost::filesystem::exists(svg_folder)) {
+			boost::filesystem::create_directory(svg_folder);
 		}
+		std::string path = boost::filesystem::system_complete(svg_folder).string();
         printf("Debugging output files will be written to %s\n", path.c_str());
     }
 	char buffer[2048];
@@ -311,7 +420,13 @@ std::string debug_out_path(const char *name, ...)
 	va_start(args, name);
 	std::vsprintf(buffer, name, args);
 	va_end(args);
-	return std::string(SLIC3R_DEBUG_OUT_PATH_PREFIX) + std::string(buffer);
+
+	std::string buf(buffer);
+	if (size_t pos = buf.find_first_of('/'); pos != std::string::npos) {
+		std::string sub_dir = buf.substr(0, pos);
+		std::filesystem::create_directory(svg_folder.string() + sub_dir);
+	}
+	return svg_folder.string() + std::string(buffer);
 }
 
 namespace logging = boost::log;
@@ -336,6 +451,7 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 	}
 	auto full_path = (log_folder / file).make_preferred();
 
+	#if !defined(SLIC3R_HEADLESS)
 	g_log_sink = boost::log::add_file_log(
 		keywords::file_name = full_path.string() + ".%N",
 		keywords::rotation_size = 100 * 1024 * 1024,
@@ -348,6 +464,7 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 			<< ":" << expr::smessage
 		)
 	);
+	#endif
 
 	logging::add_common_attributes();
 
@@ -358,9 +475,10 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 
 void flush_logs()
 {
+#if !defined(SLIC3R_HEADLESS)
 	if (g_log_sink)
 		g_log_sink->flush();
-
+#endif
 	return;
 }
 
@@ -839,7 +957,7 @@ CopyFileResult copy_file_inner(const std::string& from, const std::string& to, s
 	// That may happen when copying on some exotic file system, for example Linux on Chrome.
 	copy_file_linux(source, target, ec);
 #else // __linux__
-	boost::filesystem::copy_file(source, target, boost::filesystem::copy_option::overwrite_if_exists, ec);
+	boost::filesystem::copy_file(source, target, boost::filesystem::copy_options::overwrite_existing, ec);
 #endif // __linux__
 	if (ec) {
 		error_message = ec.message();
@@ -900,6 +1018,34 @@ __finished:
     }
     return ret_val;
 #endif
+}
+
+bool copy_framework(const std::string &from, const std::string &to)
+{
+    boost::filesystem::path src(from), dst(to);
+    try {
+        if (!boost::filesystem::is_directory(src)) {
+            std::cerr << "Error: Source is not a directory: " << src << std::endl;
+            return false;
+        }
+        boost::filesystem::create_directories(dst);
+        for (boost::filesystem::directory_iterator it(src); it != boost::filesystem::directory_iterator(); ++it) {
+            const auto &entry     = it->path();
+            const auto  dest_path = dst / entry.filename();
+
+            if (boost::filesystem::is_symlink(entry)) {
+                boost::filesystem::copy_symlink(entry, dest_path);
+            } else if (boost::filesystem::is_directory(entry)) {
+                copy_framework(it->path().string(), dest_path.string());
+            } else {
+                boost::filesystem::copy(entry, dest_path, boost::filesystem::copy_options::overwrite_existing);
+            }
+        }
+        return true;
+    } catch (const boost::filesystem::filesystem_error &e) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Filesystem error: " << e.what();
+    }
+    return false;
 }
 
 CopyFileResult check_copy(const std::string &origin, const std::string &copy)
@@ -991,7 +1137,7 @@ bool is_gallery_file(const std::string &path, char const* type)
 
 bool is_shapes_dir(const std::string& dir)
 {
-	return dir == sys_shapes_dir() || dir == custom_shapes_dir();
+	return dir == sys_shapes_dir() || dir == custom_shapes_dir() || dir == handy_models_dir();
 }
 
 } // namespace Slic3r
@@ -1116,6 +1262,18 @@ std::string normalize_utf8_nfc(const char *src)
 {
     static std::locale locale_utf8(boost::locale::generator().generate(""));
     return boost::locale::normalize(src, boost::locale::norm_nfc, locale_utf8);
+}
+
+std::vector<std::string> split_string(const std::string &str, char delimiter)
+{
+    std::vector<std::string> result;
+    std::stringstream ss(str);
+    std::string substr;
+
+    while (std::getline(ss, substr, delimiter)) {
+        result.push_back(substr);
+    }
+    return result;
 }
 
 namespace PerlUtils {
@@ -1329,6 +1487,42 @@ std::string format_memsize_MB(size_t n)
     return out + "MB";
 }
 
+std::string format_memsize(size_t bytes, unsigned int decimals)
+{
+		static constexpr const float kb = 1024.0f;
+		static constexpr const float mb = 1024.0f * kb;
+		static constexpr const float gb = 1024.0f * mb;
+		static constexpr const float tb = 1024.0f * gb;
+
+		const float f_bytes = static_cast<float>(bytes);
+		if (f_bytes < kb)
+				return std::to_string(bytes) + " bytes";
+		else if (f_bytes < mb) {
+				const float f_kb = f_bytes / kb;
+				char buf[64];
+				sprintf(buf, "%.*f", decimals, f_kb);
+				return std::to_string(bytes) + " bytes (" + std::string(buf) + "KB)";
+		}
+		else if (f_bytes < gb) {
+				const float f_mb = f_bytes / mb;
+				char buf[64];
+				sprintf(buf, "%.*f", decimals, f_mb);
+				return std::to_string(bytes) + " bytes (" + std::string(buf) + "MB)";
+		}
+		else if (f_bytes < tb) {
+				const float f_gb = f_bytes / gb;
+				char buf[64];
+				sprintf(buf, "%.*f", decimals, f_gb);
+				return std::to_string(bytes) + " bytes (" + std::string(buf) + "GB)";
+		}
+		else {
+				const float f_tb = f_bytes / tb;
+				char buf[64];
+				sprintf(buf, "%.*f", decimals, f_tb);
+				return std::to_string(bytes) + " bytes (" + std::string(buf) + "TB)";
+		}
+}
+
 // Returns platform-specific string to be used as log output or parsed in SysInfoDialog.
 // The latter parses the string with (semi)colons as separators, it should look about as
 // "desc1: value1; desc2: value2" or similar (spaces should not matter).
@@ -1336,7 +1530,25 @@ std::string log_memory_info(bool ignore_loglevel)
 {
     std::string out;
     if (ignore_loglevel || logSeverity <= boost::log::trivial::info) {
-#ifdef WIN32
+#ifdef __EMSCRIPTEN__
+		const size_t heap_size = static_cast<size_t>(emscripten_get_heap_size());
+		const uintptr_t *sbrk_ptr = emscripten_get_sbrk_ptr();
+		const size_t dynamic_top = sbrk_ptr ? static_cast<size_t>(*sbrk_ptr) : 0;
+		const size_t free_heap = (heap_size > dynamic_top) ? (heap_size - dynamic_top) : 0;
+		const uintptr_t stack_base = emscripten_stack_get_base();
+		const uintptr_t stack_end = emscripten_stack_get_end();
+		const uintptr_t stack_current = emscripten_stack_get_current();
+		const size_t stack_total = (stack_base > stack_end) ? static_cast<size_t>(stack_base - stack_end) : 0;
+		const size_t stack_used = (stack_base > stack_current) ? static_cast<size_t>(stack_base - stack_current) : 0;
+		const size_t stack_free = (stack_total > stack_used) ? (stack_total - stack_used) : 0;
+
+		out += " WASM heap: " + format_memsize_MB(heap_size);
+		out += "; WASM dynamic top: " + format_memsize_MB(dynamic_top);
+		out += "; WASM free heap headroom: " + format_memsize_MB(free_heap);
+		out += "; WASM stack used: " + format_memsize(stack_used, 2);
+		out += "; WASM stack free: " + format_memsize(stack_free, 2);
+
+#elif defined(WIN32)
     #ifndef PROCESS_MEMORY_COUNTERS_EX
         // MingW32 doesn't have this struct in psapi.h
         typedef struct _PROCESS_MEMORY_COUNTERS_EX {
@@ -1487,8 +1699,11 @@ bool makedir(const std::string path) {
 
 bool bbl_calc_md5(std::string &filename, std::string &md5_out)
 {
+	
     unsigned char digest[16];
-    MD5_CTX       ctx;
+#if !defined(SLIC3R_HEADLESS)
+
+	MD5_CTX       ctx;
     MD5_Init(&ctx);
     boost::nowide::ifstream ifs(filename, std::ios::binary);
     std::string                 buf(64 * 1024, 0);
@@ -1500,6 +1715,7 @@ bool bbl_calc_md5(std::string &filename, std::string &md5_out)
         MD5_Update(&ctx, (unsigned char *) buf.data(), read_bytes);
     }
     MD5_Final(digest, &ctx);
+#endif
     char md5_str[33];
     for (int j = 0; j < 16; j++) { sprintf(&md5_str[j * 2], "%02X", (unsigned int) digest[j]); }
     md5_out = std::string(md5_str);
@@ -1557,5 +1773,92 @@ void load_string_file(const boost::filesystem::path& p, std::string& str)
     str.resize(sz, '\0');
     file.read(&str[0], sz);
 }
+
+// pattern string supprt these pattern: "
+// 1. 5#1, insert 1 solid layer every 5 layers. this can be simplified to 5
+// 2."1,7,9", explicitly insert solid layer at layer 1, 7, 9
+bool check_layer_id_pattern(const std::string& pattern, int layer_id){
+    if (pattern.empty() || layer_id < 0)
+        return false;
+
+	// layer_id is 0-based, so we need to add 1 to make it 1-based
+	layer_id++;
+
+    // Remove whitespace and surrounding quotes.
+    std::string p; p.reserve(pattern.size());
+    for (char c : pattern) {
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+            continue;
+        p.push_back(c);
+    }
+    if (!p.empty() && (p.front() == '"' || p.front() == '\''))
+        p.erase(p.begin());
+    if (!p.empty() && (p.back() == '"' || p.back() == '\''))
+        p.pop_back();
+    if (p.empty())
+        return false;
+
+    // Explicit list form: "1,7,9" or with counts per entry: "5,9#2,18"
+    if (p.find(',') != std::string::npos) {
+        size_t start = 0;
+        while (start < p.size()) {
+            size_t end = p.find(',', start);
+            std::string token = p.substr(start, (end == std::string::npos) ? std::string::npos : end - start);
+            if (!token.empty()) {
+                try {
+                    size_t hash_pos_token = token.find('#');
+                    if (hash_pos_token == std::string::npos) {
+                        int value = std::stoi(token);
+                        if (value == layer_id)
+                            return true;
+                    } else {
+                        int base_layer = std::stoi(token.substr(0, hash_pos_token));
+                        std::string count_str = token.substr(hash_pos_token + 1);
+                        int local_count = 1;
+                        if (!count_str.empty())
+                            local_count = std::stoi(count_str);
+                        if (base_layer > 0 && local_count > 0) {
+                            if (layer_id >= base_layer && layer_id < base_layer + local_count)
+                                return true;
+                        }
+                    }
+                } catch (...) {
+                    // Ignore invalid tokens
+                }
+            }
+            if (end == std::string::npos)
+                break;
+            start = end + 1;
+        }
+        return false;
+    }
+
+    // Interval form: "N#K" or simplified "N" (equals to N#1)
+    int interval = 0;
+    int count    = 1;
+    size_t hash_pos = p.find('#');
+    try {
+        if (hash_pos == std::string::npos) {
+            interval = std::stoi(p);
+        } else {
+            interval = std::stoi(p.substr(0, hash_pos));
+            std::string count_str = p.substr(hash_pos + 1);
+            if (!count_str.empty())
+                count = std::stoi(count_str);
+        }
+    } catch (...) {
+        return false;
+    }
+
+    if (interval <= 0 || count <= 0)
+        return false;
+
+    // Layers are 1-based. Match layers interval, interval+1, ..., interval+count-1, then repeat every interval.
+    if (layer_id < interval)
+        return false;
+    int mod = layer_id % interval; // For multiples, mod == 0
+    return mod >= 0 && mod < count;
+}
+
 
 }; // namespace Slic3r

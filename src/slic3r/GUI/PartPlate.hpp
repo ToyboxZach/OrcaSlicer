@@ -12,21 +12,36 @@
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/Slicing.hpp"
 #include "libslic3r/Arrange.hpp"
+#if !defined(SLIC3R_HEADLESS) 
 #include "Plater.hpp"
+#endif
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#if !defined(SLIC3R_HEADLESS) 
 #include "GLCanvas3D.hpp"
 #include "GLTexture.hpp"
 #include "3DScene.hpp"
 #include "GLModel.hpp"
 #include "3DBed.hpp"
+#else
+
+class Plater {
+    public:
+    void set_bed_position(Slic3r::Vec2d& pos){}
+    void take_snapshot(const std::string& snapshot_name){}
+};
+class GLTexture;
+#endif
 #include "MeshUtils.hpp"
 #include "libslic3r/ParameterUtils.hpp"
 
+#ifndef SLIC3R_HEADLESS
 class GLUquadric;
 typedef class GLUquadric GLUquadricObject;
+std::vector<int> get_min_flush_volumes(const DynamicPrintConfig &full_config, size_t nozzle_id);
 
+#endif
 
 // use PLATE_CURRENT_IDX stands for using current plate
 // and use PLATE_ALL_IDX
@@ -52,7 +67,6 @@ inline int compute_colum_count(int count)
 
 extern const float WIPE_TOWER_DEFAULT_X_POS;
 extern const float WIPE_TOWER_DEFAULT_Y_POS;  // Max y
-
 extern const float I3_WIPE_TOWER_DEFAULT_X_POS;
 extern const float I3_WIPE_TOWER_DEFAULT_Y_POS; // Max y
 
@@ -67,7 +81,17 @@ class Print;
 class SLAPrint;
 
 namespace GUI {
+#ifdef SLIC3R_HEADLESS
+class Plater {
+public:
+    void set_bed_position(Slic3r::Vec2d& pos){}
+    void take_snapshot(const std::string& snapshot_name){}
+private:
+    Plater() {}
+};
+#else
 class Plater;
+#endif
 class GLCanvas3D;
 struct Camera;
 class PartPlateList;
@@ -117,9 +141,10 @@ private:
 
     friend class PartPlateList;
 
-    Pointfs m_raw_shape;
     Pointfs m_shape;
     Pointfs m_exclude_area;
+    std::vector<Pointfs> m_extruder_areas;
+    std::vector<double> m_extruder_heights;
     BoundingBoxf3 m_bounding_box;
     BoundingBoxf3 m_extended_bounding_box;
     mutable std::vector<BoundingBoxf3> m_exclude_bounding_box;
@@ -127,8 +152,11 @@ private:
     Transform3d m_grabber_trans_matrix;
     Slic3r::Geometry::Transformation position;
     std::vector<Vec3f> positions;
+    ExPolygon m_print_polygon;
+#ifndef SLIC3R_HEADLESS
     PickingModel m_triangles;
     GLModel m_exclude_triangles;
+    GLModel m_wrapping_detection_triangles;
     GLModel m_logo_triangles;
     GLModel m_gridlines;
     GLModel m_gridlines_bolder;
@@ -140,13 +168,14 @@ private:
     PickingModel m_orient_icon;
     PickingModel m_lock_icon;
     PickingModel m_plate_settings_icon;
+    PickingModel m_plate_filament_map_icon;
     PickingModel m_plate_name_edit_icon;
     PickingModel m_move_front_icon;
     GLModel m_plate_idx_icon;
     GLTexture m_texture;
-
     float m_scale_factor{ 1.0f };
     GLUquadricObject* m_quadric;
+#endif
     int m_hover_id;
     bool m_selected;
     int m_timelapse_warning_code = 0;
@@ -157,10 +186,12 @@ private:
     // SoftFever
     // part plate name
     std::string m_name;
+#ifndef SLIC3R_HEADLESS
     GLModel m_plate_name_icon;
     GLTexture m_name_texture;
     wxCoord m_name_texture_width;
     wxCoord m_name_texture_height;
+#endif
 
     void init();
     bool valid_instance(int obj_id, int instance_id);
@@ -168,10 +199,15 @@ private:
     void generate_exclude_polygon(ExPolygon &exclude_polygon);
     void generate_logo_polygon(ExPolygon &logo_polygon);
     void calc_bounding_boxes() const;
+#ifndef SLIC3R_HEADLESS
     void calc_triangles(const ExPolygon& poly);
     void calc_exclude_triangles(const ExPolygon& poly);
+    void calc_triangles_from_polygon(const ExPolygon &poly, GLModel& render_model);
     void calc_gridlines(const ExPolygon& poly, const BoundingBox& pp_bbox);
+#endif
     void calc_height_limit();
+#ifndef SLIC3R_HEADLESS
+
     void calc_vertex_for_number(int index, bool one_number, GLModel &buffer);
     void calc_vertex_for_plate_name_edit_icon(GLTexture *texture, int index, PickingModel &model);
     void calc_vertex_for_icons(int index, PickingModel &model);
@@ -182,6 +218,7 @@ private:
     void render_exclude_area(bool force_default_color);
     //void render_background_for_picking(const ColorRGBA render_color) const;
     void render_grid(bool bottom);
+    void render_wrapping_detection_area(bool force_default_color);
     void render_height_limit(PartPlate::HeightLimitMode mode = HEIGHT_LIMIT_BOTH);
     // void render_label(GLCanvas3D& canvas) const;
     // void render_grabber(const ColorRGBA render_color, bool use_lighting) const;
@@ -196,11 +233,16 @@ private:
     void render_plate_name_texture();
     void register_raycasters_for_picking(GLCanvas3D& canvas);
     int picking_id_component(int idx) const;
+#endif
+
+    void on_filament_map_mode_change();
 
 public:
-    static const unsigned int PLATE_NAME_HOVER_ID = 6;
-    static const unsigned int GRABBER_COUNT = 8;
+    static constexpr unsigned int PLATE_NAME_HOVER_ID = 6;
+    static constexpr unsigned int PLATE_FILAMENT_MAP_ID = 8;
+    static constexpr unsigned int GRABBER_COUNT = 9;
 
+#ifndef SLIC3R_HEADLESS
     static ColorRGBA SELECT_COLOR;
     static ColorRGBA UNSELECT_COLOR;
     static ColorRGBA UNSELECT_DARK_COLOR;
@@ -215,12 +257,16 @@ public:
 
     static void update_render_colors();
     static void load_render_colors();
+#endif
 
     PartPlate();
     PartPlate(PartPlateList *partplate_list, Vec3d origin, int width, int depth, int height, Plater* platerObj, Model* modelObj, bool printable=true, PrinterTechnology tech = ptFFF);
     ~PartPlate();
 
+#ifndef SLIC3R_HEADLESS
     bool operator<(PartPlate&) const;
+
+#endif
 
     //clear alll the instances in plate
     void clear(bool clear_sliced_result = true);
@@ -228,6 +274,9 @@ public:
     BedType get_bed_type(bool load_from_project = false) const;
     void set_bed_type(BedType bed_type);
     void reset_bed_type();
+
+    void reset_skirt_start_angle();
+
     DynamicPrintConfig* config() { return &m_config; }
 
     // set print sequence per plate
@@ -239,14 +288,30 @@ public:
     // @return PrintSequence::{ByLayer,ByObject}
     PrintSequence get_real_print_seq(bool* plate_same_as_global=nullptr) const;
 
+    std::vector<int> get_real_filament_maps(const DynamicConfig& g_config, bool* use_global_param = nullptr)const;
+    FilamentMapMode  get_real_filament_map_mode(const DynamicConfig& g_config,bool * use_global_param = nullptr) const;
+
+    FilamentMapMode get_filament_map_mode() const;
+    void set_filament_map_mode(const FilamentMapMode& mode);
+
+    // get filament map, 0 based filament ids, 1 based extruder ids
+    std::vector<int> get_filament_maps() const;
+    void set_filament_maps(const std::vector<int>& f_maps);
+
+    void clear_filament_map();
+    void clear_filament_map_mode();
+
     bool has_spiral_mode_config() const;
     bool get_spiral_vase_mode() const;
     void set_spiral_vase_mode(bool spiral_mode, bool as_global);
+
+    std::vector<Vec2d> get_plate_wrapping_detection_area() const;
 
     //static const int plate_x_offset = 20; //mm
     //static const double plate_x_gap = 0.2;
     ThumbnailData thumbnail_data;
     ThumbnailData no_light_thumbnail_data;
+    ThumbnailData obj_preview_thumbnail_data;
     static const int plate_thumbnail_width = 512;
     static const int plate_thumbnail_height = 512;
 
@@ -267,7 +332,9 @@ public:
     // SoftFever
     //get the plate's name
     std::string get_plate_name() const { return m_name; }
+#ifndef SLIC3R_HEADLESS
     void generate_plate_name_texture();
+#endif
     //set the plate's name
     void set_plate_name(const std::string& name);
 
@@ -299,12 +366,30 @@ public:
     BoundingBoxf3 get_objects_bounding_box();
 
     Vec3d get_origin() { return m_origin; }
-    Vec3d estimate_wipe_tower_size(const DynamicPrintConfig & config, const double w, const double d, int plate_extruder_size = 0, bool use_global_objects = false) const;
-    arrangement::ArrangePolygon estimate_wipe_tower_polygon(const DynamicPrintConfig & config, int plate_index, int plate_extruder_size = 0, bool use_global_objects = false) const;
+    //Vec3d calculate_wipe_tower_size(const DynamicPrintConfig &config, const double w, const double wipe_volume, int plate_extruder_size = 0, bool use_global_objects = false) const;
+    Vec3d estimate_wipe_tower_size(const DynamicPrintConfig & config, const double w, const double wipe_volume, int extruder_count = 1, int plate_extruder_size = 0, bool use_global_objects = false, bool enable_wrapping_detection = false) const;
+    arrangement::ArrangePolygon estimate_wipe_tower_polygon(const DynamicPrintConfig & config, int plate_index, Vec3d& wt_pos, Vec3d& wt_size, int extruder_count = 1, int plate_extruder_size = 0, bool use_global_objects = false) const;
+    bool check_objects_empty_and_gcode3mf(std::vector<int> &result) const;
+    // get used filaments from config, 1 based idx
+#ifndef SLIC3R_HEADLESS
     std::vector<int> get_extruders(bool conside_custom_gcode = false) const;
+#endif
     std::vector<int> get_extruders_under_cli(bool conside_custom_gcode, DynamicPrintConfig& full_config) const;
     std::vector<int> get_extruders_without_support(bool conside_custom_gcode = false) const;
-    std::vector<int> get_used_extruders();
+    // get used filaments from gcode result, 1 based idx
+    std::vector<int> get_used_filaments();
+#ifndef SLIC3R_HEADLESS
+    int  get_physical_extruder_by_filament_id(const DynamicConfig& g_config, int idx) const;
+    bool check_filament_printable(const DynamicPrintConfig & config, wxString& error_message);
+#endif
+ 
+    bool check_tpu_printable_status(const DynamicPrintConfig & config, const std::vector<int> &tpu_filaments);
+
+#ifndef SLIC3R_HEADLESS
+    bool check_mixture_of_pla_and_petg(const DynamicPrintConfig & config);
+    bool check_mixture_filament_compatible(const DynamicPrintConfig& config, std::string &error_msg);
+    bool check_compatible_of_nozzle_and_filament(const DynamicPrintConfig & config, const std::vector<std::string>& filament_presets, std::string& error_msg);
+#endif
 
     /* instance related operations*/
     //judge whether instance is bound in plate or not
@@ -318,7 +403,6 @@ public:
 
     //check whether instance is outside the plate or not
     bool check_outside(int obj_id, int instance_id, BoundingBoxf3* bounding_box = nullptr);
-
     //judge whether instance is intesected with plate or not
     bool intersect_instance(int obj_id, int instance_id, BoundingBoxf3* bounding_box = nullptr);
 
@@ -357,13 +441,20 @@ public:
 
     /*rendering related functions*/
     const Pointfs& get_shape() const { return m_shape; }
-    bool set_shape(const Pointfs& shape, const Pointfs& exclude_areas, Vec2d position, float height_to_lid, float height_to_rod);
+    
+    bool set_shape(const Pointfs& shape, const Pointfs& exclude_areas, const std::vector<Pointfs>& extruder_areas, const std::vector<double>& extruder_heights, Vec2d position, float height_to_lid, float height_to_rod);
+    const std::vector<Pointfs>& get_extruder_areas() const { return m_extruder_areas; }
+    const std::vector<double>& get_extruder_heights() const { return m_extruder_heights; }
     bool contains(const Vec3d& point) const;
+#ifndef SLIC3R_HEADLESS
     bool contains(const GLVolume& v) const;
+#endif
     bool contains(const BoundingBoxf3& bb) const;
     bool intersects(const BoundingBoxf3& bb) const;
 
+#ifndef SLIC3R_HEADLESS
     void render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_body = false, bool force_background_color = false, HeightLimitMode mode = HEIGHT_LIMIT_NONE, int hover_id = -1, bool render_cali = false, bool show_grid = true);
+#endif
 
     void set_selected();
     void set_unselected();
@@ -371,15 +462,7 @@ public:
     const BoundingBoxf3& get_bounding_box(bool extended = false) { return extended ? m_extended_bounding_box : m_bounding_box; }
     const BoundingBox get_bounding_box_crd();
     BoundingBoxf3 get_plate_box() {return get_build_volume();}
-    // Orca: support non-rectangular bed
-    BoundingBoxf3 get_build_volume()
-    {
-        auto  eps=Slic3r::BuildVolume::SceneEpsilon;
-        Vec3d         up_point  = m_bounding_box.max + Vec3d(eps, eps, m_origin.z() + m_height + eps);
-        Vec3d         low_point = m_bounding_box.min + Vec3d(-eps, -eps, m_origin.z() - eps);
-        BoundingBoxf3 plate_box(low_point, up_point);
-        return plate_box;
-    }
+    BoundingBoxf3 get_build_volume(bool use_share = false);
 
     const std::vector<BoundingBoxf3>& get_exclude_areas() { return m_exclude_bounding_box; }
 
@@ -426,7 +509,9 @@ public:
     {
         bool result = m_slice_result_valid;
         if (result)
-            result = m_gcode_result ? (!m_gcode_result->toolpath_outside) : false;// && !m_gcode_result->conflict_result.has_value()  gcode conflict can also print
+            result = m_gcode_result ?
+			(!m_gcode_result->toolpath_outside && m_gcode_result->gcode_check_result.error_code == 0 && !m_gcode_result->filament_printable_reuslt.has_value()) :
+			false;// && !m_gcode_result->conflict_result.has_value()  gcode conflict can also print
         return result;
     }
 
@@ -447,8 +532,10 @@ public:
     float get_slicing_percent() { return m_slice_percent; }
 
     /*slice related functions*/
+#ifndef SLIC3R_HEADLESS
     //update current slice context into backgroud slicing process
     void update_slice_context(BackgroundSlicingProcess& process);
+#endif
     //return the fff print object
     Print* fff_print() { return m_print; }
     //return the slice result
@@ -475,8 +562,14 @@ public:
     void set_first_layer_print_sequence(const std::vector<int> &sorted_filaments);
     void set_other_layers_print_sequence(const std::vector<LayerPrintSequence>& layer_seq_list);
     void update_first_layer_print_sequence(size_t filament_nums);
+    void update_first_layer_print_sequence_when_delete_filament(size_t filamen_id);
 
     void print() const;
+
+    void on_extruder_count_changed(int extruder_count);
+    void set_filament_count(int filament_count);
+    void on_filament_added();
+    void on_filament_deleted(int filament_count, int filament_id);
 
     friend class cereal::access;
     friend class UndoRedo::StackImpl;
@@ -540,9 +633,13 @@ class PartPlateList : public ObjectBase
     PartPlate unprintable_plate;
     Pointfs m_shape;
     Pointfs m_exclude_areas;
+    Pointfs m_wrapping_exclude_areas;
+    std::vector<Pointfs> m_extruder_areas;
+    std::vector<double> m_extruder_heights;
     BoundingBoxf3 m_bounding_box;
     bool m_intialized;
     std::string m_logo_texture_filename;
+#ifndef SLIC3R_HEADLESS
     GLTexture m_logo_texture;
     GLTexture m_del_texture;
     GLTexture m_del_hovered_texture;
@@ -560,6 +657,8 @@ class PartPlateList : public ObjectBase
     GLTexture m_plate_settings_changed_texture;
     GLTexture m_plate_settings_hovered_texture;
     GLTexture m_plate_settings_changed_hovered_texture;
+    GLTexture m_plate_set_filament_map_texture;
+    GLTexture m_plate_set_filament_map_hovered_texture;
     GLTexture m_plate_name_edit_texture;
     GLTexture m_plate_name_edit_hovered_texture;
     GLTexture m_idx_textures[MAX_PLATE_COUNT];
@@ -569,6 +668,9 @@ class PartPlateList : public ObjectBase
     bool render_cali_logo = true;
 
     bool m_is_dark = false;
+#endif
+
+    int m_filament_count = 1;
 
     void init();
     //compute the origin for printable plate with index i
@@ -578,16 +680,18 @@ class PartPlateList : public ObjectBase
     //compute shape position
     Vec2d compute_shape_position(int index, int cols);
     //generate icon textures
+#ifndef SLIC3R_HEADLESS
     void generate_icon_textures();
     void release_icon_textures();
 
     void set_default_wipe_tower_pos_for_plate(int plate_idx);
-
+#endif
     friend class cereal::access;
     friend class UndoRedo::StackImpl;
     friend class PartPlate;
 
 public:
+#ifndef SLIC3R_HEADLESS
     class BedTextureInfo {
     public:
         class TexturePart {
@@ -620,6 +724,9 @@ public:
                 this->filename  = part.filename;
                 this->texture   = part.texture;
             }
+            void update_file(std::string file) {
+                filename = file;
+            }
 
             void update_buffer();
             void reset();
@@ -627,11 +734,15 @@ public:
         std::vector<TexturePart> parts;
         void                     reset();
     };
+#endif
 
-    static const unsigned int MAX_PLATES_COUNT = MAX_PLATE_COUNT;
+    static constexpr unsigned int MAX_PLATES_COUNT = MAX_PLATE_COUNT;
+#ifndef SLIC3R_HEADLESS
     static GLTexture bed_textures[(unsigned int)btCount];
+#endif
     static bool is_load_bedtype_textures;
     static bool is_load_cali_texture;
+    static bool is_load_extruder_only_area_textures;
 
     PartPlateList(int width, int depth, int height, Plater* platerObj, Model* modelObj, PrinterTechnology tech = ptFFF);
     PartPlateList(Plater* platerObj, Model* modelObj, PrinterTechnology tech = ptFFF);
@@ -678,6 +789,7 @@ public:
     //int delete_plate(PartPlate* plate);
     void delete_selected_plate();
 
+    bool check_all_plate_local_bed_type(const std::vector<BedType>& cur_bed_types);
     //get a plate pointer by index
     PartPlate* get_plate(int index);
 
@@ -708,9 +820,11 @@ public:
     Vec3d get_current_plate_origin() { return compute_origin(m_current_plate, m_plate_cols); }
     Vec2d get_current_shape_position() { return compute_shape_position(m_current_plate, m_plate_cols); }
     Pointfs get_exclude_area() { return m_exclude_areas; }
+    Pointfs get_wrapping_exclude_area() const { return m_wrapping_exclude_areas; }
+#ifndef SLIC3R_HEADLESS
 
     std::set<int> get_extruders(bool conside_custom_gcode = false) const;
-
+#endif
     //select plate
     int select_plate(int index);
 
@@ -769,7 +883,7 @@ public:
     //preprocess an arrangement::ArrangePolygon, return true if it is in a locked plate
     bool preprocess_arrange_polygon(int obj_index, int instance_index, arrangement::ArrangePolygon& arrange_polygon, bool selected);
     bool preprocess_arrange_polygon_other_locked(int obj_index, int instance_index, arrangement::ArrangePolygon& arrange_polygon, bool selected);
-    bool preprocess_exclude_areas(arrangement::ArrangePolygons& unselected, int num_plates = 16, float inflation = 0);
+    bool preprocess_exclude_areas(arrangement::ArrangePolygons& unselected, bool enable_wrapping_detect, int num_plates = 16, float inflation = 0);
     bool preprocess_nonprefered_areas(arrangement::ArrangePolygons& regions, int num_plates = 1, float inflation=0);
 
     void postprocess_bed_index_for_selected(arrangement::ArrangePolygon& arrange_polygon);
@@ -780,6 +894,7 @@ public:
     void postprocess_arrange_polygon(arrangement::ArrangePolygon& arrange_polygon, bool selected);
 
     /*rendering related functions*/
+#ifndef SLIC3R_HEADLESS
     void on_change_color_mode(bool is_dark) { m_is_dark = is_dark; }
     void render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_current = false, bool only_body = false, int hover_id = -1, bool render_cali = false, bool show_grid = true);
     void set_render_option(bool bedtype_texture, bool plate_settings);
@@ -789,22 +904,33 @@ public:
         for (auto plate : m_plate_list)
             plate->register_raycasters_for_picking(canvas);
     }
+#endif
     BoundingBoxf3& get_bounding_box() { return m_bounding_box; }
     //int select_plate_by_hover_id(int hover_id);
     int select_plate_by_obj(int obj_index, int instance_index);
     void calc_bounding_boxes();
+#ifndef SLIC3R_HEADLESS
     void select_plate_view();
-    bool set_shapes(const Pointfs& shape, const Pointfs& exclude_areas, const std::string& custom_texture, float height_to_lid, float height_to_rod);
+#endif
+    bool set_shapes(const Pointfs              &shape,
+                    const Pointfs              &exclude_areas,
+                    const Pointfs              &wrapping_exclude_areas,
+                    const std::vector<Pointfs> &extruder_areas,
+                    const std::vector<double>  &extruder_heights,
+                    const std::string          &custom_texture,
+                    float                       height_to_lid,
+                    float                       height_to_rod);
     void set_hover_id(int id);
     void reset_hover_id();
     bool intersects(const BoundingBoxf3 &bb);
     bool contains(const BoundingBoxf3 &bb);
-
+#ifndef SLIC3R_HEADLESS
     const std::string &get_logo_texture_filename() { return m_logo_texture_filename; }
     void               update_logo_texture_filename(const std::string &texture_filename);
     /*slice related functions*/
     //update current slice context into backgroud slicing process
     void update_slice_context_to_current_plate(BackgroundSlicingProcess& process);
+#endif
     //return the current fff print object
     Print& get_current_fff_print() const;
     //return the slice result
@@ -835,7 +961,7 @@ public:
     * if with_gcode = true and specify plate_idx, export plate_idx gcode only
     */
     int store_to_3mf_structure(PlateDataPtrs& plate_data_list, bool with_slice_info = true, int plate_idx = -1);
-    int load_from_3mf_structure(PlateDataPtrs& plate_data_list);
+    int load_from_3mf_structure(PlateDataPtrs& plate_data_list, int filament_count = 1);
     //load gcode files
     int load_gcode_files();
 
@@ -846,16 +972,37 @@ public:
         ar(m_plate_width, m_plate_depth, m_plate_height, m_height_to_lid, m_height_to_rod, m_height_limit_mode, m_plate_count, m_current_plate, m_plate_list, unprintable_plate);
         //ar(m_plate_width, m_plate_depth, m_plate_height, m_plate_count, m_current_plate);
     }
-
+    struct Rect
+    {
+        int x;
+        int y;
+        int w;
+        int h;
+    };
+#ifndef SLIC3R_HEADLESS
+    bool calc_extruder_only_area(Rect &left_only_rect, Rect &right_only_rect);
     void init_bed_type_info();
+    bool init_extruder_only_area_info();
     void load_bedtype_textures();
+    void load_extruder_only_area_textures();
 
     void show_cali_texture(bool show = true);
     void init_cali_texture_info();
     void load_cali_textures();
+#endif
 
+    void on_extruder_count_changed(int extruder_count);
+
+    void set_filament_count(int filament_count);
+    void on_filament_deleted(int filament_count, int filament_id);
+    void on_filament_added(int filament_count);
+
+    std::map<int, bool> m_allow_bed_type_in_double_nozzle;
+#ifndef SLIC3R_HEADLESS
     BedTextureInfo bed_texture_info[btCount];
     BedTextureInfo cali_texture_info;
+    BedTextureInfo extruder_only_area_info[(unsigned char) Slic3r::ExtruderOnlyAreaType::btAreaCount];
+#endif
 };
 
 } // namespace GUI

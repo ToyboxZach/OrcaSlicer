@@ -43,6 +43,7 @@ using t_back_to_init = std::function<void(const std::string&)>;
 wxString double_to_string(double const value, const int max_precision = 4);
 wxString get_thumbnail_string(const Vec2d& value);
 wxString get_thumbnails_string(const std::vector<Vec2d>& values);
+wxString get_formatted_tooltip_text(const ConfigOptionDef& opt, const t_config_option_key& id);
 
 class UndoValueUIManager
 {
@@ -468,6 +469,7 @@ class ColourPicker : public Field {
 	using Field::Field;
 
     void            set_undef_value(wxColourPickerCtrl* field);
+    void            draw_bmp_btn(wxColourPickerCtrl* field, wxColour color);
 public:
 	ColourPicker(const ConfigOptionDef& opt, const t_config_option_key& id) : Field(opt, id) {}
 	ColourPicker(wxWindow* parent, const ConfigOptionDef& opt, const t_config_option_key& id) : Field(parent, opt, id) {}

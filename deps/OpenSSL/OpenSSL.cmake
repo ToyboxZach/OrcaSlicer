@@ -8,7 +8,7 @@ else()
     if(WIN32)
         set(_cross_arch "VC-WIN64A")
     elseif(APPLE)
-        set(_cross_arch "darwin64-arm64-cc")
+        set(_cross_arch "darwin64-${CMAKE_OSX_ARCHITECTURES}-cc")
 	endif()
 endif()
 
@@ -37,6 +37,23 @@ else()
         endif ()
     endif ()
 endif()
+
+# Emscripten/WASM overrides:
+#   - Use linux-generic32 (WASM has a 32-bit address space; auto-detect picks the
+#     wrong linux-x32 ABI target).
+#   - Use ./Configure explicitly so the target is honoured.
+#   - Clear the cross-compile prefix: emmake already injects CC/CXX/AR etc. via
+#     env vars, so adding "--cross-compile-prefix=<empty>-" would prepend a bare
+#     "-" to every tool name and break linking (the "-/path/to/emcc" error).
+#   - Build only the libraries (build_libs) to skip OpenSSL test programs which
+#     fail to link under emcc.
+if (EMSCRIPTEN)
+    set(_cross_arch "linux-generic32")
+    set(_conf_cmd "./Configure")
+    set(_cross_comp_prefix_line "")
+    set(_make_cmd make build_libs)
+    set(_install_cmd make install_sw)
+endif ()
 
 ExternalProject_Add(dep_OpenSSL
     #EXCLUDE_FROM_ALL ON

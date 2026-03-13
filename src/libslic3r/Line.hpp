@@ -39,9 +39,10 @@ template<class L> auto get_a(L &&l) { return Traits<remove_cvref_t<L>>::get_a(l)
 template<class L> auto get_b(L &&l) { return Traits<remove_cvref_t<L>>::get_b(l); }
 
 // Distance to the closest point of line.
-template<class L>
-double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, Vec<Dim<L>, Scalar<L>> *nearest_point)
+template<class L, class Derived>
+double distance_to_squared(const L &line, const Eigen::MatrixBase<Derived> &in_point, Vec<Dim<L>, Scalar<L>> *nearest_point)
 {
+    const Vec<Dim<L>, Scalar<L>> point = in_point.template cast<Scalar<L>>();
     const Vec<Dim<L>, double>  v  = (get_b(line) - get_a(line)).template cast<double>();
     const Vec<Dim<L>, double>  va = (point  - get_a(line)).template cast<double>();
     const double  l2 = v.squaredNorm();  // avoid a sqrt
@@ -69,8 +70,8 @@ double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, V
 }
 
 // Distance to the closest point of line.
-template<class L>
-double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
+template<class L, class Derived>
+double distance_to_squared(const L &line, const Eigen::MatrixBase<Derived> &point)
 {
     Vec<Dim<L>, Scalar<L>> nearest_point;
     return distance_to_squared<L>(line, point, &nearest_point);
@@ -84,9 +85,10 @@ double distance_to(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
 
 // Returns a squared distance to the closest point on the infinite.
 // Returned nearest_point (and returned squared distance to this point) could be beyond the 'a' and 'b' ends of the segment.
-template<class L>
-double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, Vec<Dim<L>, Scalar<L>> *closest_point)
+template<class L, class Derived>
+double distance_to_infinite_squared(const L &line, const Eigen::MatrixBase<Derived> &in_point, Vec<Dim<L>, Scalar<L>> *closest_point)
 {
+    const Vec<Dim<L>, Scalar<L>> point = in_point.template cast<Scalar<L>>();
     const Vec<Dim<L>, double> v  = (get_b(line) - get_a(line)).template cast<double>();
     const Vec<Dim<L>, double> va = (point - get_a(line)).template cast<double>();
     const double              l2 = v.squaredNorm(); // avoid a sqrt
@@ -105,8 +107,8 @@ double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> 
 
 // Returns a squared distance to the closest point on the infinite.
 // Closest point (and returned squared distance to this point) could be beyond the 'a' and 'b' ends of the segment.
-template<class L>
-double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
+template<class L, class Derived>
+double distance_to_infinite_squared(const L &line, const Eigen::MatrixBase<Derived> &point)
 {
     Vec<Dim<L>, Scalar<L>> nearest_point;
     return distance_to_infinite_squared<L>(line, point, &nearest_point);
@@ -183,7 +185,7 @@ public:
 	bool   clip_with_bbox(const BoundingBox &bbox);
     // Extend the line from both sides by an offset.
     void   extend(double offset);
-
+    bool   overlap(const Line &line, double &overlap_length) const;
     static inline double distance_to_squared(const Point &point, const Point &a, const Point &b) { return line_alg::distance_to_squared(Line{a, b}, Vec<2, coord_t>{point}); }
     static double distance_to(const Point &point, const Point &a, const Point &b) { return sqrt(distance_to_squared(point, a, b)); }
 

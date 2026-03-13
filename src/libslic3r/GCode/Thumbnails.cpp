@@ -4,8 +4,10 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <qoi/qoi.h>
+#if !defined(SLIC3R_HEADLESS)
 #include <jpeglib.h>
 #include <jerror.h>
+#endif
 #include <vector>
 #include <boost/algorithm/string.hpp>
 
@@ -50,6 +52,7 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_png(const ThumbnailDat
     return out;
 }
 
+#if !defined(SLIC3R_HEADLESS)
 std::unique_ptr<CompressedImageBuffer> compress_thumbnail_jpg(const ThumbnailData& data)
 {
     // Take vector of RGBA pixels and flip the image vertically
@@ -97,6 +100,14 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_jpg(const ThumbnailDat
     ::memcpy(out->data, (const void*)compressed_data.data(), out->size);
     return out;
 }
+#else
+// EMSCRIPTEN stub: JPEG support not available
+std::unique_ptr<CompressedImageBuffer> compress_thumbnail_jpg(const ThumbnailData& data)
+{
+    // Return nullptr or fallback to PNG for EMSCRIPTEN builds
+    return compress_thumbnail_png(data);
+}
+#endif
 
 std::unique_ptr<CompressedImageBuffer> compress_thumbnail_qoi(const ThumbnailData &data)
 {
