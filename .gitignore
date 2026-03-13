@@ -46,3 +46,6 @@ test.js
 internal_docs/
 *.flatpak
 /flatpak-repo/
+orca-slicer.js
+orca-slicer.wasm
+orca-slicer.worker.js

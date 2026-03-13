@@ -4,7 +4,13 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#if !defined(SLIC3R_HEADLESS)
+
 #include <openssl/md5.h>
+
+#endif
+
+
 #include <openssl/evp.h>
 #include <wx/dcgraph.h>
 #include <wx/tooltip.h>
@@ -464,7 +470,8 @@ static wxString get_curr_radio_type(std::vector<std::pair<RadioBox *, wxString>>
 
 static std::string calculate_md5(const std::string &input)
 {
-    unsigned char digest[MD5_DIGEST_LENGTH];
+    
+    //unsigned char digest[MD5_DIGEST_LENGTH];
     std::string   md5;
 
     EVP_MD_CTX *mdContext = EVP_MD_CTX_new();

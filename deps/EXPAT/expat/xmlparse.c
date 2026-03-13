@@ -117,29 +117,6 @@
 #  define LOAD_LIBRARY_SEARCH_SYSTEM32 0x00000800
 #endif
 
-#if ! defined(HAVE_GETRANDOM) && ! defined(HAVE_SYSCALL_GETRANDOM)             \
-    && ! defined(HAVE_ARC4RANDOM_BUF) && ! defined(HAVE_ARC4RANDOM)            \
-    && ! defined(XML_DEV_URANDOM) && ! defined(_WIN32)                         \
-    && ! defined(XML_POOR_ENTROPY)
-#  error You do not have support for any sources of high quality entropy \
-    enabled.  For end user security, that is probably not what you want. \
-    \
-    Your options include: \
-      * Linux >=3.17 + glibc >=2.25 (getrandom): HAVE_GETRANDOM, \
-      * Linux >=3.17 + glibc (including <2.25) (syscall SYS_getrandom): HAVE_SYSCALL_GETRANDOM, \
-      * BSD / macOS >=10.7 (arc4random_buf): HAVE_ARC4RANDOM_BUF, \
-      * BSD / macOS (including <10.7) (arc4random): HAVE_ARC4RANDOM, \
-      * libbsd (arc4random_buf): HAVE_ARC4RANDOM_BUF + HAVE_LIBBSD, \
-      * libbsd (arc4random): HAVE_ARC4RANDOM + HAVE_LIBBSD, \
-      * Linux (including <3.17) / BSD / macOS (including <10.7) / Solaris >=8 (/dev/urandom): XML_DEV_URANDOM, \
-      * Windows >=Vista (rand_s): _WIN32. \
-    \
-    If insist on not using any of these, bypass this error by defining \
-    XML_POOR_ENTROPY; you have been warned. \
-    \
-    If you have reasons to patch this detection code away or need changes \
-    to the build system, please open a bug.  Thank you!
-#endif
 
 #ifdef XML_UNICODE
 #  define XML_ENCODE_MAX XML_UTF16_ENCODE_MAX

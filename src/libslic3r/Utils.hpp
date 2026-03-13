@@ -14,9 +14,10 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/date_time.hpp>
 #include "boost/date_time/posix_time/ptime.hpp"
+#if !defined(SLIC3R_HEADLESS)
 
 #include <openssl/md5.h>
-
+#endif
 #include "libslic3r.h"
 
 //define CLI errors
@@ -91,6 +92,7 @@ extern std::string format_memsize(size_t bytes, unsigned int decimals = 1);
 // Latter is used to get the memory info from SysInfoDialog.
 extern std::string log_memory_info(bool ignore_loglevel = false);
 extern void disable_multi_threading();
+extern void cap_tbb_parallelism_for_wasm();
 // Returns the size of physical memory (RAM) in bytes.
 extern size_t total_physical_memory();
 

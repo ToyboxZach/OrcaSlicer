@@ -1,3 +1,17 @@
+#if defined(SLIC3R_HEADLESS)
+#include "svg.hpp"
+#include "../Model.hpp"
+
+namespace Slic3r {
+
+bool load_svg(const char * /*path*/, Model * /*model*/, std::string &message)
+{
+    message = "SVG import is not available in headless builds.";
+    return false;
+}
+
+} // namespace Slic3r
+#else
 #include "libslic3r/ClipperUtils.hpp"
 #include "../libslic3r.h"
 #include "../Model.hpp"
@@ -400,3 +414,4 @@ bool load_svg(const char *path, Model *model, std::string &message)
     return true;
 }
 } // namespace Slic3r
+#endif // SLIC3R_HEADLESS

@@ -19,9 +19,13 @@ add_subdirectory(clipper)
 add_subdirectory(clipper2)
 add_subdirectory(expat)
 add_subdirectory(glu-libtess)
-add_subdirectory(hidapi)
+# hidapi uses native platform backends (linux hidraw / mac IOKit / win HID).
+# Skip it for headless WASM builds where SLIC3R_GUI is OFF and linux headers are unavailable.
+if (SLIC3R_GUI AND NOT EMSCRIPTEN)
+	add_subdirectory(hidapi)
+    add_subdirectory(imgui)
+endif()
 add_subdirectory(hints)        # Hints library with utility executable
-add_subdirectory(imgui)
 add_subdirectory(imguizmo)
 add_subdirectory(libigl)
 add_subdirectory(libnest2d)
