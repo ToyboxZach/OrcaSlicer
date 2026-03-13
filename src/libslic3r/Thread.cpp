@@ -161,20 +161,37 @@ std::optional<std::string> get_current_thread_name()
 // posix
 bool set_thread_name(std::thread &thread, const char *thread_name)
 {
+	(void)thread;
+	(void)thread_name;
+#ifdef __EMSCRIPTEN__
+	return false;
+#else
    	pthread_setname_np(thread.native_handle(), thread_name);
 	return true;
+#endif
 }
 
 bool set_thread_name(boost::thread &thread, const char *thread_name)
 {
+	(void)thread;
+	(void)thread_name;
+#ifdef __EMSCRIPTEN__
+	return false;
+#else
    	pthread_setname_np(thread.native_handle(), thread_name);
 	return true;
+#endif
 }
 
 bool set_current_thread_name(const char *thread_name)
 {
+	(void)thread_name;
+#ifdef __EMSCRIPTEN__
+	return false;
+#else
 	pthread_setname_np(pthread_self(), thread_name);
 	return true;
+#endif
 }
 
 std::optional<std::string> get_current_thread_name()
@@ -216,11 +233,25 @@ void name_tbb_thread_pool_threads_set_locale()
 		return;
 	initialized = true;
 
+	cap_tbb_parallelism_for_wasm();
+
+
 	// see GH issue #5661 PrusaSlicer hangs on Linux when run with non standard task affinity
 	// TBB will respect the task affinity mask on Linux and spawn less threads than std::thread::hardware_concurrency().
 //	const size_t nthreads_hw = std::thread::hardware_concurrency();
 	const size_t nthreads_hw = tbb::this_task_arena::max_concurrency();
 	size_t       nthreads    = nthreads_hw;
+
+#ifdef __EMSCRIPTEN__
+	// On WebAssembly pthread builds, the browser worker pool is finite and there may
+	// already be non-TBB worker activity in flight. Keep some headroom so this eager
+	// TBB fan-out does not exhaust the pool and deadlock.
+	constexpr size_t emscripten_reserved_threads = 2;
+	if (nthreads > emscripten_reserved_threads)
+		nthreads -= emscripten_reserved_threads;
+	else
+		nthreads = 1;
+#endif
 
 #ifdef SLIC3R_PROFILE
 	// Shiny profiler is not thread safe, thus disable parallelization.

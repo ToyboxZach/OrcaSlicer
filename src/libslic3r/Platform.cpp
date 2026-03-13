@@ -89,7 +89,7 @@ void detect_platform()
 #else
 	// This should not happen.
     BOOST_LOG_TRIVIAL(info) << "Platform: Unknown";
-	static_assert(false, "Unknown platform detected");
+	//static_assert(false, "Unknown platform detected");
 	s_platform 		  = Platform::Unknown;
 	s_platform_flavor = PlatformFlavor::Unknown;
 #endif

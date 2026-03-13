@@ -1639,6 +1639,7 @@ void SkeletalTrapezoidation::propagateBeadingsDownward(edge_t* edge_to_peak, ptr
         BeadingPropagation& bottom_beading = *edge_to_peak->from->data.getBeading();
         coord_t total_dist = top_beading.dist_from_top_source + length + bottom_beading.dist_to_bottom_source;
         double ratio_of_top = static_cast<float>(bottom_beading.dist_to_bottom_source) / std::min(total_dist, beading_propagation_transition_dist);
+
         ratio_of_top = std::max(0.0, ratio_of_top);
         if (ratio_of_top >= 1.0)
         {
@@ -1665,10 +1666,23 @@ SkeletalTrapezoidation::Beading SkeletalTrapezoidation::interpolate(const Beadin
     assert(ratio_left_to_whole >= 0.0 && ratio_left_to_whole <= 1.0);
     Beading ret = interpolate(left, ratio_left_to_whole, right);
 
+  
+
     // TODO: don't use toolpath locations past the middle!
     // TODO: stretch bead widths and locations of the higher bead count beading to fit in the left over space
     coord_t next_inset_idx;
-    for (next_inset_idx = left.toolpath_locations.size() - 1; next_inset_idx >= 0; next_inset_idx--)
+    auto size = left.toolpath_locations.size();
+      // NOTE ABOUT WASM/EMSCRIPTEN:
+    // This path used to walk backward from `size() - 1` and index toolpath arrays.
+    // If any toolpath vector is empty, that becomes an underflow/out-of-range access.
+    // On native builds this is undefined behavior and may look nondeterministic; on
+    // WebAssembly linear-memory bounds checks make it fail deterministically with
+    // "memory access out of bounds".
+    if (size <= 0)
+    {
+        return ret;
+    }
+    for (next_inset_idx = size - 1; next_inset_idx >= 0; next_inset_idx--)
     {
         if (switching_radius > left.toolpath_locations[next_inset_idx])
         {

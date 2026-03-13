@@ -5,7 +5,9 @@
 #include <string>
 #include <regex>
 #include <future>
+#ifndef SLIC3R_HEADLESS
 #include <GL/glew.h>
+#endif
 #include <boost/algorithm/string.hpp>
 #include <boost/optional.hpp>
 #include <boost/filesystem/path.hpp>
@@ -24,6 +26,7 @@
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/Utils.hpp"
 
+#ifndef SLIC3R_HEADLESS
 #include "I18N.hpp"
 #include "GUI_App.hpp"
 #include "libslic3r/AppConfig.hpp"
@@ -42,8 +45,15 @@
 #include "slic3r/Utils/FileHelp.hpp"
 #include <imgui/imgui_internal.h>
 #include <wx/dcgraph.h>
+#endif // !SLIC3R_HEADLESS
+#include "PartPlate.hpp"
 using boost::optional;
 namespace fs = boost::filesystem;
+
+
+#ifdef SLIC3R_HEADLESS
+#include "BuildVolume.hpp"
+#endif
 
 static const float GROUND_Z = -0.03f;
 static const float GROUND_Z_GRIDLINE = -0.26f;
@@ -76,6 +86,7 @@ namespace GUI {
 
 class Bed3D;
 
+#ifndef SLIC3R_HEADLESS
 ColorRGBA PartPlate::SELECT_COLOR		= { 0.2666f, 0.2784f, 0.2784f, 1.0f }; //{ 0.4196f, 0.4235f, 0.4235f, 1.0f };
 ColorRGBA PartPlate::UNSELECT_COLOR		= { 0.82f, 0.82f, 0.82f, 1.0f };
 ColorRGBA PartPlate::UNSELECT_DARK_COLOR		= { 0.384f, 0.384f, 0.412f, 1.0f };
@@ -144,13 +155,13 @@ void PartPlate::load_render_colors()
     RenderColor::colors[RenderCol_Plate_Line_Bottom] = ImGuiWrapper::to_ImVec4(LINE_BOTTOM_COLOR);
 }
 
-
 PartPlate::PartPlate()
 	: ObjectBase(-1), m_plater(nullptr), m_model(nullptr), m_quadric(nullptr)
 {
 	assert(this->id().invalid());
 	init();
 }
+#endif // !SLIC3R_HEADLESS
 
 PartPlate::PartPlate(PartPlateList *partplate_list, Vec3d origin, int width, int depth, int height, Plater* platerObj, Model* modelObj, bool printable, PrinterTechnology tech)
 	:m_partplate_list(partplate_list), m_plater(platerObj), m_model(modelObj), printer_technology(tech), m_origin(origin), m_width(width), m_depth(depth), m_height(height),  m_printable(printable)
@@ -183,7 +194,7 @@ void PartPlate::init()
 	m_print = nullptr;
 	m_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode", true)->value = FilamentMapMode::fmmAutoForFlush;
 }
-
+#ifndef SLIC3R_HEADLESS
 BedType PartPlate::get_bed_type(bool load_from_project) const
 {
 	std::string bed_type_key = "curr_bed_type";
@@ -231,6 +242,7 @@ void PartPlate::set_bed_type(BedType bed_type)
     else
         m_config.set_key_value("curr_bed_type", new ConfigOptionEnum<BedType>(bed_type));
 }
+#endif
 
 void PartPlate::reset_bed_type()
 {
@@ -242,6 +254,7 @@ void PartPlate::reset_skirt_start_angle()
     m_config.erase("skirt_start_angle");
 }
 
+#ifndef SLIC3R_HEADLESS
 void PartPlate::set_print_seq(PrintSequence print_seq)
 {
     std::string print_seq_key = "print_sequence";
@@ -276,6 +289,8 @@ void PartPlate::set_print_seq(PrintSequence print_seq)
         m_config.set_key_value(print_seq_key, new ConfigOptionEnum<PrintSequence>(print_seq));
 }
 
+#endif
+
 PrintSequence PartPlate::get_print_seq() const
 {
     std::string print_seq_key = "print_sequence";
@@ -288,6 +303,7 @@ PrintSequence PartPlate::get_print_seq() const
     return PrintSequence::ByDefault;
 }
 
+#ifndef SLIC3R_HEADLESS
 PrintSequence PartPlate::get_real_print_seq(bool* plate_same_as_global) const
 {
 	PrintSequence global_print_seq = wxGetApp().global_print_sequence();
@@ -301,6 +317,7 @@ PrintSequence PartPlate::get_real_print_seq(bool* plate_same_as_global) const
 
     return curr_plate_seq;
 }
+#endif
 
 std::vector<int> PartPlate::get_real_filament_maps(const DynamicConfig& g_config, bool* use_global_param) const
 {
@@ -333,7 +350,7 @@ bool PartPlate::has_spiral_mode_config() const
 	std::string key = "spiral_mode";
 	return m_config.has(key);
 }
-
+#ifndef SLIC3R_HEADLESS
 bool PartPlate::get_spiral_vase_mode() const
 {
 	std::string key = "spiral_mode";
@@ -362,7 +379,8 @@ std::vector<Vec2d> PartPlate::get_plate_wrapping_detection_area() const
 
     return std::vector<Vec2d>();
 }
-
+#endif
+#ifndef SLIC3R_HEADLESS
 void PartPlate::set_spiral_vase_mode(bool spiral_mode, bool as_global)
 {
 	std::string key = "spiral_mode";
@@ -383,6 +401,7 @@ void PartPlate::set_spiral_vase_mode(bool spiral_mode, bool as_global)
 			m_config.set_key_value(key, new ConfigOptionBool(false));
 	}
 }
+#endif
 
 bool PartPlate::valid_instance(int obj_id, int instance_id)
 {
@@ -435,6 +454,7 @@ void PartPlate::calc_bounding_boxes() const {
 	}
 }
 
+#ifndef SLIC3R_HEADLESS
 void PartPlate::calc_triangles(const ExPolygon &poly)
 {
     m_triangles.reset();
@@ -590,7 +610,6 @@ void PartPlate::calc_height_limit() {
 	if (!init_model_from_lines(m_height_limit_top, top_h_lines))
 		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to create height limit top lines\n";
 }
-
 void PartPlate::calc_vertex_for_number(int index, bool one_number, GLModel &buffer)
 {
     buffer.reset();
@@ -979,7 +998,6 @@ void PartPlate::render_grid(bool bottom) {
 
     shader->set_uniform("view_model_matrix", view_matrix);
     shader->set_uniform("projection_matrix", projection_matrix);
-
 #if !SLIC3R_OPENGL_ES
     if (!OpenGLManager::get_gl_info().is_core_profile())
         glsafe(::glLineWidth(1.0f * m_scale_factor));
@@ -1607,6 +1625,7 @@ std::vector<int> PartPlate::get_extruders(bool conside_custom_gcode) const
 	plate_extruders.resize(std::distance(plate_extruders.begin(), it_end));
 	return plate_extruders;
 }
+#endif
 
 std::vector<int> PartPlate::get_extruders_under_cli(bool conside_custom_gcode, DynamicPrintConfig& full_config) const
 {
@@ -1730,6 +1749,7 @@ std::vector<int> PartPlate::get_extruders_under_cli(bool conside_custom_gcode, D
     return plate_extruders;
 }
 
+#ifndef SLIC3R_HEADLESS
 bool PartPlate::check_objects_empty_and_gcode3mf(std::vector<int> &result) const
 {
     if (m_model->objects.empty()) {//objects is empty
@@ -1854,12 +1874,13 @@ bool PartPlate::check_filament_printable(const DynamicPrintConfig &config, wxStr
     }
     return true;
 }
-
+#endif
 bool PartPlate::check_tpu_printable_status(const DynamicPrintConfig & config, const std::vector<int> &tpu_filaments)
 {
 	// do not limit the num of tpu filament in slicing
 	return true;
 }
+#ifndef SLIC3R_HEADLESS
 
 bool PartPlate::check_mixture_of_pla_and_petg(const DynamicPrintConfig &config)
 {
@@ -2048,7 +2069,7 @@ bool PartPlate::check_compatible_of_nozzle_and_filament(const DynamicPrintConfig
 
     return wipe_tower_size;
 }*/
-
+#endif
 Vec3d PartPlate::estimate_wipe_tower_size(const DynamicPrintConfig & config, const double w, const double wipe_volume, int extruder_count, int plate_extruder_size, bool use_global_objects, bool enable_wrapping_detection) const
 {
     Vec3d wipe_tower_size;
@@ -2063,9 +2084,14 @@ Vec3d PartPlate::estimate_wipe_tower_size(const DynamicPrintConfig & config, con
     // empty plate
     if (plate_extruder_size == 0)
     {
+		// TODO: This is the most unknown change, un clear if this is ever called
+	#ifndef SLIC3R_HEADLESS
         std::vector<int> plate_extruders = get_extruders(true);
         plate_extruder_size = plate_extruders.size();
-    }
+	#else
+		plate_extruder_size = 1;
+	#endif
+	}
     if (plate_extruder_size == 0)
         return wipe_tower_size;
 
@@ -2126,24 +2152,24 @@ Vec3d PartPlate::estimate_wipe_tower_size(const DynamicPrintConfig & config, con
 
 arrangement::ArrangePolygon PartPlate::estimate_wipe_tower_polygon(const DynamicPrintConfig& config, int plate_index, Vec3d& wt_pos, Vec3d& wt_size, int extruder_count, int plate_extruder_size, bool use_global_objects) const
 {
-	float x = dynamic_cast<const ConfigOptionFloats*>(config.option("wipe_tower_x"))->get_at(plate_index);
-	float y = dynamic_cast<const ConfigOptionFloats*>(config.option("wipe_tower_y"))->get_at(plate_index);
-	float w = dynamic_cast<const ConfigOptionFloat*>(config.option("prime_tower_width"))->value;
+    float x = dynamic_cast<const ConfigOptionFloats*>(config.option("wipe_tower_x"))->get_at(plate_index);
+    float y = dynamic_cast<const ConfigOptionFloats*>(config.option("wipe_tower_y"))->get_at(plate_index);
+    float w = dynamic_cast<const ConfigOptionFloat*>(config.option("prime_tower_width"))->value;
 	//float a = dynamic_cast<const ConfigOptionFloat*>(config.option("wipe_tower_rotation_angle"))->value;
-	float v = dynamic_cast<const ConfigOptionFloat*>(config.option("prime_volume"))->value;
+    float v = dynamic_cast<const ConfigOptionFloat*>(config.option("prime_volume"))->value;
     float tower_brim_width = dynamic_cast<const ConfigOptionFloat*>(config.option("prime_tower_brim_width"))->value;
     const ConfigOptionBool * wrapping_opt = dynamic_cast<const ConfigOptionBool *>(config.option("enable_wrapping_detection"));
-	bool enable_wrapping = (wrapping_opt != nullptr) && wrapping_opt->value;
-	wt_size = estimate_wipe_tower_size(config, w, v, extruder_count, plate_extruder_size, use_global_objects, enable_wrapping);
-	int plate_width=m_width, plate_depth=m_depth;
-	float depth = wt_size(1);
-	float margin = WIPE_TOWER_MARGIN + tower_brim_width, wp_brim_width = 0.f;
-	const ConfigOption* wipe_tower_brim_width_opt = config.option("prime_tower_brim_width");
-	if (wipe_tower_brim_width_opt) {
-		wp_brim_width = wipe_tower_brim_width_opt->getFloat();
+    bool enable_wrapping = (wrapping_opt != nullptr) && wrapping_opt->value;
+    wt_size = estimate_wipe_tower_size(config, w, v, extruder_count, plate_extruder_size, use_global_objects, enable_wrapping);
+    int plate_width=m_width, plate_depth=m_depth;
+    float depth = wt_size(1);
+    float margin = WIPE_TOWER_MARGIN + tower_brim_width, wp_brim_width = 0.f;
+    const ConfigOption* wipe_tower_brim_width_opt = config.option("prime_tower_brim_width");
+    if (wipe_tower_brim_width_opt) {
+        wp_brim_width = wipe_tower_brim_width_opt->getFloat();
         if (wp_brim_width < 0) wp_brim_width = WipeTower::get_auto_brim_by_height((float) wt_size.z());
-		BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format("arrange wipe_tower: wp_brim_width %1%") % wp_brim_width;
-	}
+        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format("arrange wipe_tower: wp_brim_width %1%") % wp_brim_width;
+    }
 
 	x = std::clamp(x, margin, (float)plate_width - w - margin - wp_brim_width);
     y = std::clamp(y, margin, (float)plate_depth - depth - margin - wp_brim_width);
@@ -2170,12 +2196,13 @@ arrangement::ArrangePolygon PartPlate::estimate_wipe_tower_polygon(const Dynamic
 
 	return wipe_tower_ap;
 }
-
+#ifndef SLIC3R_HEADLESS
 bool PartPlate::operator<(PartPlate& plate) const
 {
 	int index = plate.get_index();
 	return (this->m_plate_index < index);
 }
+#endif
 
 //set the plate's index
 void PartPlate::set_index(int index)
@@ -2186,7 +2213,6 @@ void PartPlate::set_index(int index)
 	if (m_print != nullptr)
 		m_print->set_plate_index(index);
 }
-
 void PartPlate::clear(bool clear_sliced_result)
 {
 	obj_to_instance_set.clear();
@@ -2195,7 +2221,10 @@ void PartPlate::clear(bool clear_sliced_result)
 		m_ready_for_slice = true;
 		update_slice_result_valid_state(false);
 	}
+#ifndef SLIC3R_HEADLESS
+
 	m_name_texture.reset();
+#endif
 	return;
 }
 
@@ -2282,6 +2311,7 @@ Vec3d PartPlate::get_center_origin()
 
 	return origin;
 }
+#ifndef SLIC3R_HEADLESS
 
 void PartPlate::generate_plate_name_texture()
 {
@@ -2327,6 +2357,9 @@ void PartPlate::generate_plate_name_texture()
     calc_vertex_for_plate_name_edit_icon(&m_name_texture, 0, m_plate_name_edit_icon);
     register_model_for_picking(*canvas, m_plate_name_edit_icon, picking_id_component(6));
 }
+#endif // !SLIC3R_HEADLESS
+
+
 void PartPlate::set_plate_name(const std::string& name) 
 { 
 	// compare if name equal to m_name, case sensitive
@@ -2336,8 +2369,9 @@ void PartPlate::set_plate_name(const std::string& name)
 	m_name = name;
     if (m_print != nullptr)
         m_print->set_plate_name(name);
-
+#ifndef SLIC3R_HEADLESS
 	generate_plate_name_texture();
+#endif
 }
 
 //get the print's object, result and index
@@ -2460,7 +2494,6 @@ bool PartPlate::contain_instance_totally(int obj_id, int instance_id) const
 
 	return result;
 }
-
 //check whether instance is outside the plate or not
 bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* bounding_box)
 {
@@ -2475,7 +2508,9 @@ bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* boundi
 	if (instance_box.max.z() > plate_box.min.z())
 		plate_box.min.z() += instance_box.min.z(); // not considering outsize if sinking
 
+#ifndef SLIC3R_HEADLESS
 	if (instance_box.min.z() < SINKING_Z_THRESHOLD) {
+
 		// Orca: For sinking object, we use a more expensive algorithm so part below build plate won't be considered
 		if (plate_box.intersects(instance_box)) {
 			// TODO: FIXME: this does not take exclusion area into account
@@ -2485,6 +2520,7 @@ bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* boundi
 		}
 	}
 	else
+#endif
 	if (plate_box.contains(instance_box))
 	{
 		if (m_exclude_bounding_box.size() > 0)
@@ -2509,7 +2545,6 @@ bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* boundi
 
 	return outside;
 }
-
 //judge whether instance is intesected with plate or not
 bool PartPlate::intersect_instance(int obj_id, int instance_id, BoundingBoxf3* bounding_box)
 {
@@ -2788,6 +2823,8 @@ void PartPlate::update_object_index(int obj_idx_removed, int obj_idx_max)
 
 }
 
+#ifndef SLIC3R_HEADLESS
+
 void PartPlate::set_vase_mode_related_object_config(int obj_id) {
 	ModelObjectPtrs obj_ptrs;
 	if (obj_id != -1) {
@@ -2824,6 +2861,8 @@ void PartPlate::set_vase_mode_related_object_config(int obj_id) {
 	}
 	//wxGetApp().obj_list()->update_selections();
 }
+
+#endif
 
 int PartPlate::printable_instance_size()
 {
@@ -2910,6 +2949,7 @@ void PartPlate::move_instances_to(PartPlate& left_plate, PartPlate& right_plate,
 	return;
 }
 
+#ifndef SLIC3R_HEADLESS
 void PartPlate::generate_logo_polygon(ExPolygon &logo_polygon)
 {
 	if (m_shape.size() == 4)
@@ -2939,6 +2979,7 @@ void PartPlate::generate_logo_polygon(ExPolygon &logo_polygon)
 		}
 	}
 }
+#endif
 
 void PartPlate::generate_print_polygon(ExPolygon &print_polygon)
 {
@@ -3026,6 +3067,7 @@ void PartPlate::generate_exclude_polygon(ExPolygon &exclude_polygon)
 	exclude_polygon.contour.make_counter_clockwise();
 }
 
+
 bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, const std::vector<Pointfs>& extruder_areas, const std::vector<double>& extruder_heights, Vec2d position, float height_to_lid, float height_to_rod)
 {
 	Pointfs new_shape, new_exclude_areas;
@@ -3073,13 +3115,13 @@ bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, co
 		m_exclude_area = std::move(new_exclude_areas);
 
 		calc_bounding_boxes();
+#ifndef SLIC3R_HEADLESS
 
 		ExPolygon logo_poly;
 		generate_logo_polygon(logo_poly);
 		m_logo_triangles.reset();
 		if (!init_model_from_poly(m_logo_triangles, logo_poly, GROUND_Z + 0.02f))
 			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":Unable to create logo triangles\n";
-
 		ExPolygon poly;
 		/*for (const Vec2d& p : m_shape) {
 			poly.contour.append({ scale_(p(0)), scale_(p(1)) });
@@ -3090,6 +3132,7 @@ bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, co
         // reset m_wrapping_detection_triangles when change printer
         m_print_polygon = poly;
         m_wrapping_detection_triangles.reset();
+
         init_raycaster_from_model(m_triangles);
 
 		ExPolygon exclude_poly;
@@ -3098,7 +3141,7 @@ bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, co
 		}*/
 		generate_exclude_polygon(exclude_poly);
 		calc_exclude_triangles(exclude_poly);
-
+			init_raycaster_from_model(m_exclude_triangles, true);
 		const BoundingBox& pp_bbox = poly.contour.bounding_box();
 		calc_gridlines(poly, pp_bbox);
 
@@ -3124,9 +3167,12 @@ bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, co
 			// calc vertex for plate name
 			generate_plate_name_texture();
 		}
-	}
 
+#endif
+	}
+#ifndef SLIC3R_HEADLESS
 	calc_height_limit();
+#endif
 
 	return true;
 }
@@ -3164,10 +3210,12 @@ bool PartPlate::contains(const Vec3d& point) const
 	return m_bounding_box.contains(point);
 }
 
+#ifndef SLIC3R_HEADLESS
 bool PartPlate::contains(const GLVolume& v) const
 {
 	return m_bounding_box.contains(v.bounding_box());
 }
+#endif
 
 bool PartPlate::contains(const BoundingBoxf3& bb) const
 {
@@ -3192,7 +3240,7 @@ bool PartPlate::intersects(const BoundingBoxf3& bb) const
 	print_volume.max(1) += Slic3r::BuildVolume::BedEpsilon;
 	return print_volume.intersects(bb);
 }
-
+#ifndef SLIC3R_HEADLESS
 void PartPlate::render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_body, bool force_background_color, HeightLimitMode mode, int hover_id, bool render_cali, bool show_grid)
 {
     glsafe(::glEnable(GL_DEPTH_TEST));
@@ -3258,6 +3306,7 @@ void PartPlate::render(const Transform3d& view_matrix, const Transform3d& projec
 
     glsafe(::glDisable(GL_DEPTH_TEST));
 }
+#endif
 
 void PartPlate::set_selected() {
 	m_selected = true;
@@ -3308,7 +3357,7 @@ void PartPlate::update_slice_result_valid_state(bool valid)
         m_slice_percent = -1.0f;
     }
 }
-
+#ifndef SLIC3R_HEADLESS
 //update current slice context into backgroud slicing process
 void PartPlate::update_slice_context(BackgroundSlicingProcess & process)
 {
@@ -3331,6 +3380,7 @@ void PartPlate::update_slice_context(BackgroundSlicingProcess & process)
 
 	return;
 }
+#endif
 
 // BBS: delay calc gcode path in backup dir
 std::string PartPlate::get_tmp_gcode_path()
@@ -3355,7 +3405,7 @@ std::string PartPlate::get_temp_config_3mf_path()
 	}
 	return m_temp_config_3mf_path;
 }
-
+#ifndef SLIC3R_HEADLESS
 // load gcode from file
 int PartPlate::load_gcode_from_file(const std::string& filename)
 {
@@ -3422,6 +3472,7 @@ int PartPlate::load_thumbnail_data(std::string filename, ThumbnailData& thumb_da
 	return 0;
 }
 
+#endif
 int PartPlate::load_pattern_thumbnail_data(std::string filename)
 {
 	/*bool result = true;
@@ -3633,6 +3684,7 @@ FilamentMapMode PartPlate::get_filament_map_mode() const
     return FilamentMapMode::fmmDefault;
 }
 
+#ifndef SLIC3R_HEADLESS
 void PartPlate::set_filament_map_mode(const FilamentMapMode& mode)
 {
 	const auto& proj_config = wxGetApp().preset_bundle->project_config;
@@ -3648,6 +3700,7 @@ void PartPlate::set_filament_map_mode(const FilamentMapMode& mode)
 	else
 		m_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode", true)->value = mode;
 }
+#endif
 
 std::vector<int> PartPlate::get_filament_maps() const
 {
@@ -3674,7 +3727,7 @@ void PartPlate::clear_filament_map_mode()
     if (m_config.has("filament_map_mode"))
         m_config.erase("filament_map_mode");
 }
-
+#ifndef SLIC3R_HEADLESS
 void PartPlate::on_extruder_count_changed(int extruder_count)
 {
     if (extruder_count < 2) {
@@ -3688,6 +3741,7 @@ void PartPlate::on_extruder_count_changed(int extruder_count)
         m_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode", true)->value = FilamentMapMode::fmmAutoForFlush;
     }
 }
+#endif
 
 void PartPlate::set_filament_count(int filament_count)
 {
@@ -3734,9 +3788,10 @@ PartPlateList::PartPlateList(Plater* platerObj, Model* modelObj, PrinterTechnolo
 PartPlateList::~PartPlateList()
 {
 	clear(true, true);
+#ifndef SLIC3R_HEADLESS
 	release_icon_textures();
+#endif
 }
-
 void PartPlateList::init()
 {
 	m_intialized = false;
@@ -3760,11 +3815,13 @@ void PartPlateList::init()
 	m_plate_count = 1;
 	m_plate_cols = 1;
 	m_current_plate = 0;
+#ifndef SLIC3R_HEADLESS
 
 	if (m_plater) {
         // In GUI mode
         set_default_wipe_tower_pos_for_plate(0);
     }
+#endif
 
 	select_plate(0);
 	unprintable_plate.set_index(1);
@@ -3823,6 +3880,7 @@ Vec2d PartPlateList::compute_shape_position(int index, int cols)
 
 	return pos;
 }
+#ifndef SLIC3R_HEADLESS
 
 //generate icon textures
 void PartPlateList::generate_icon_textures()
@@ -4063,7 +4121,6 @@ void PartPlateList::release_icon_textures()
         }
     }
 }
-
 void PartPlateList::set_default_wipe_tower_pos_for_plate(int plate_idx)
 {
     DynamicConfig &     proj_cfg     = wxGetApp().preset_bundle->project_config;
@@ -4083,6 +4140,7 @@ void PartPlateList::set_default_wipe_tower_pos_for_plate(int plate_idx)
     dynamic_cast<ConfigOptionFloats *>(proj_cfg.option("wipe_tower_x"))->set_at(&wt_x_opt, plate_idx, 0);
     dynamic_cast<ConfigOptionFloats *>(proj_cfg.option("wipe_tower_y"))->set_at(&wt_y_opt, plate_idx, 0);
 }
+#endif
 
 //this may be happened after machine changed
 void PartPlateList::reset_size(int width, int depth, int height, bool reload_objects, bool update_shapes)
@@ -4156,7 +4214,7 @@ void PartPlateList::clear(bool delete_plates, bool release_print_list, bool exce
 
 	unprintable_plate.clear();
 }
-
+#ifndef SLIC3R_HEADLESS
 //clear all the instances in the plate, and delete the plates, only keep the first default plate
 void PartPlateList::reset(bool do_init)
 {
@@ -4202,6 +4260,8 @@ void PartPlateList::update_plates()
     update_all_plates_pos_and_size(true, false);
     set_shapes(m_shape, m_exclude_areas, m_wrapping_exclude_areas, m_extruder_areas, m_extruder_heights, m_logo_texture_filename, m_height_to_lid, m_height_to_rod);
 }
+
+#endif
 
 int PartPlateList::create_plate(bool adjust_position)
 {
@@ -4257,29 +4317,30 @@ int PartPlateList::create_plate(bool adjust_position)
 		//update bounding_boxes
 		calc_bounding_boxes();
 	}
+#ifndef SLIC3R_HEADLESS
 
 	// update wipe tower config
 	if (m_plater) {
 		// In GUI mode
         set_default_wipe_tower_pos_for_plate(new_index);
 	}
-
+#endif
 	unprintable_plate.set_index(new_index+1);
 
 	//reload all objects here
 	if (adjust_position)
 		construct_objects_list_for_new_plate(new_index);
-
+#ifndef SLIC3R_HEADLESS
 	if (m_plater) {
 		// In GUI mode
 		wxGetApp().obj_list()->on_plate_added(plate);
 	}
-
+#endif
 	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":created a new plate %1%") % new_index;
 	return new_index;
 }
 
-
+#ifndef SLIC3R_HEADLESS
 int PartPlateList::duplicate_plate(int index)
 {
     // create a new plate
@@ -4309,6 +4370,8 @@ int PartPlateList::duplicate_plate(int index)
     wxGetApp().obj_list()->reload_all_plates();
     return new_plate_index;
 }
+#endif
+
 
 
 //destroy print's objects and results
@@ -4346,7 +4409,6 @@ int PartPlateList::destroy_print(int print_index)
 
 	return result;
 }
-
 //delete a plate by index
 //keep its instance at origin position and add them into next plate if have
 //update the plate index and position after it
@@ -4374,6 +4436,7 @@ int PartPlateList::delete_plate(int index)
 		return -1;
 	}
 
+#ifndef SLIC3R_HEADLESS
 	if (m_plater) {
 		// In GUI mode
 		// BBS: add wipe tower logic
@@ -4388,7 +4451,7 @@ int PartPlateList::delete_plate(int index)
 		if (index < wipe_tower_y->values.size())
 			wipe_tower_y->values.erase(wipe_tower_y->values.begin() + index);
 	}
-
+#endif
 	int cols = compute_colum_count(m_plate_list.size() - 1);
 	int old_cols = compute_colum_count(m_plate_list.size());
 
@@ -4470,6 +4533,7 @@ void PartPlateList::delete_selected_plate()
 	delete_plate(m_current_plate);
 }
 
+
 bool PartPlateList::check_all_plate_local_bed_type(const std::vector<BedType> &cur_bed_types)
 {
     std::string bed_type_key = "curr_bed_type";
@@ -4541,7 +4605,7 @@ std::vector<const GCodeProcessorResult*> PartPlateList::get_nonempty_plates_slic
 	}
 	return nonempty_plates_slice_result;
 }
-
+#ifndef SLIC3R_HEADLESS
 std::set<int> PartPlateList::get_extruders(bool conside_custom_gcode) const
 {
     int plate_count = get_plate_count();
@@ -4554,7 +4618,7 @@ std::set<int> PartPlateList::get_extruders(bool conside_custom_gcode) const
 
     return extruder_ids;
 }
-
+#endif
 
 //select plate
 int PartPlateList::select_plate(int index)
@@ -4657,7 +4721,6 @@ int PartPlateList::get_plate_count() const
 
 	return ret;
 }
-
 //update the plate cols due to plate count change
 void PartPlateList::update_plate_cols()
 {
@@ -4679,16 +4742,19 @@ void PartPlateList::update_all_plates_pos_and_size(bool adjust_position, bool wi
 		//compute origin1 for PartPlate
 		origin1 = compute_origin(i, m_plate_cols);
 		plate->set_pos_and_size(origin1, m_plate_width, m_plate_depth, m_plate_height, adjust_position, do_clear);
-
+#ifndef SLIC3R_HEADLESS
 		// set default wipe pos when switch plate
         if (switch_plate_type && m_plater/* && plate->get_used_extruders().size() <= 0*/) {
 			set_default_wipe_tower_pos_for_plate(i);
 		}
+#endif
 	}
 
 	origin2 = compute_origin_for_unprintable();
 	unprintable_plate.set_pos_and_size(origin2, m_plate_width, m_plate_depth, m_plate_height, with_unprintable_move);
 }
+#ifndef SLIC3R_HEADLESS
+
 
 //move the plate to position index
 int PartPlateList::move_plate_to_index(int old_index, int new_index)
@@ -4732,6 +4798,8 @@ int PartPlateList::move_plate_to_index(int old_index, int new_index)
 
 	return ret;
 }
+
+#endif
 
 //lock plate
 int PartPlateList::lock_plate(int index, bool state)
@@ -4832,7 +4900,7 @@ int PartPlateList::find_instance_belongs(int obj_id, int instance_id)
 	//return -1 for not found
 	return ret;
 }
-
+#ifndef SLIC3R_HEADLESS
 //notify instance's update, need to refresh the instance in plates
 //newly added or modified
 int PartPlateList::notify_instance_update(int obj_id, int instance_id, bool is_new)
@@ -4968,7 +5036,7 @@ int PartPlateList::notify_instance_update(int obj_id, int instance_id, bool is_n
 
 	return 0;
 }
-
+#endif 
 //notify instance is removed
 int PartPlateList::notify_instance_removed(int obj_id, int instance_id)
 {
@@ -5105,6 +5173,7 @@ int PartPlateList::reload_all_objects(bool except_locked, int plate_index)
 	return ret;
 }
 
+
 //reload objects for newly created plate
 int PartPlateList::construct_objects_list_for_new_plate(int plate_index)
 {
@@ -5158,7 +5227,6 @@ int PartPlateList::construct_objects_list_for_new_plate(int plate_index)
 
 	return ret;
 }
-
 
 //compute the plate index
 int PartPlateList::compute_plate_index(arrangement::ArrangePolygon& arrange_polygon)
@@ -5477,6 +5545,7 @@ void PartPlateList::postprocess_arrange_polygon(arrangement::ArrangePolygon& arr
 	return;
 }
 
+#ifndef SLIC3R_HEADLESS
 /*rendering related functions*/
 //render
 void PartPlateList::render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_current, bool only_body, int hover_id, bool render_cali, bool show_grid)
@@ -5517,6 +5586,8 @@ void PartPlateList::render(const Transform3d& view_matrix, const Transform3d& pr
 	}
 }
 
+#endif
+
 /*int PartPlateList::select_plate_by_hover_id(int hover_id)
 {
 	int index = hover_id / PartPlate::GRABBER_COUNT;
@@ -5545,7 +5616,7 @@ void PartPlateList::render(const Transform3d& view_matrix, const Transform3d& pr
 	}
 	return 0;
 }*/
-
+#ifndef SLIC3R_HEADLESS
 void PartPlateList::set_render_option(bool bedtype_texture, bool plate_settings)
 {
     render_bedtype_logo = bedtype_texture;
@@ -5568,7 +5639,7 @@ int PartPlateList::select_plate_by_obj(int obj_index, int instance_index)
 	}
 	return -1;
 }
-
+#endif
 void PartPlateList::calc_bounding_boxes()
 {
 	m_bounding_box.reset();
@@ -5577,6 +5648,7 @@ void PartPlateList::calc_bounding_boxes()
 		m_bounding_box.merge((*it)->get_bounding_box(true));
 	}
 }
+#ifndef SLIC3R_HEADLESS
 
 void PartPlateList::select_plate_view()
 {
@@ -5587,7 +5659,7 @@ void PartPlateList::select_plate_view()
 	m_plater->get_camera().look_at(position, target, Vec3d::UnitY());
 	m_plater->get_camera().select_view("topfront");
 }
-
+#endif
 bool PartPlateList::set_shapes(const Pointfs              &shape,
                                const Pointfs              &exclude_areas,
                                const Pointfs              &wrapping_exclude_areas,
@@ -5621,11 +5693,12 @@ bool PartPlateList::set_shapes(const Pointfs              &shape,
 	is_load_bedtype_textures = false; //reload textures
     is_load_extruder_only_area_textures = false; // reload textures
 	calc_bounding_boxes();
-
+#ifndef SLIC3R_HEADLESS
 	update_logo_texture_filename(texture_filename);
-
+#endif
 	return true;
 }
+#ifndef SLIC3R_HEADLESS
 
 void PartPlateList::update_logo_texture_filename(const std::string &texture_filename)
 {
@@ -5655,7 +5728,7 @@ void PartPlateList::update_slice_context_to_current_plate(BackgroundSlicingProce
 
 	return;
 }
-
+#endif
 //return the current fff print object
 Print& PartPlateList::get_current_fff_print() const
 {
@@ -5783,6 +5856,8 @@ void PartPlateList::get_sliced_result(std::vector<bool>& sliced_result, std::vec
 		gcode_paths[i] = m_plate_list[i]->m_tmp_gcode_path;
 	}
 }
+#ifndef SLIC3R_HEADLESS
+
 //rebuild data which are not serialized after de-serialize
 int PartPlateList::rebuild_plates_after_deserialize(std::vector<bool>& previous_sliced_result, std::vector<std::string>& previous_gcode_paths)
 {
@@ -5890,7 +5965,7 @@ int PartPlateList::rebuild_plates_after_deserialize(std::vector<bool>& previous_
 	}*/
 	return ret;
 }
-
+#endif
 //retruct plates structures after auto-arrangement
 int PartPlateList::rebuild_plates_after_arrangement(bool recycle_plates, bool except_locked, int plate_index)
 {
@@ -5936,6 +6011,7 @@ int PartPlateList::rebuild_plates_after_arrangement(bool recycle_plates, bool ex
 	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":after rebuild, plates count %1%") % m_plate_list.size();
 	return ret;
 }
+#ifndef SLIC3R_HEADLESS
 
 int PartPlateList::store_to_3mf_structure(PlateDataPtrs& plate_data_list, bool with_slice_info, int plate_idx)
 {
@@ -6021,7 +6097,7 @@ int PartPlateList::store_to_3mf_structure(PlateDataPtrs& plate_data_list, bool w
 
 	return ret;
 }
-
+#endif
 int PartPlateList::load_from_3mf_structure(PlateDataPtrs& plate_data_list, int filament_count)
 {
 	int ret = 0;
@@ -6071,6 +6147,7 @@ int PartPlateList::load_from_3mf_structure(PlateDataPtrs& plate_data_list, int f
 		m_plate_list[index]->slice_filaments_info = plate_data_list[i]->slice_filaments_info;
 		gcode_result->warnings = plate_data_list[i]->warnings;
         gcode_result->filament_maps = plate_data_list[i]->filament_maps;
+#ifndef SLIC3R_HEADLESS
 		if (m_plater && !plate_data_list[i]->thumbnail_file.empty()) {
 			BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1%, load thumbnail from %2%.")%(i+1) %plate_data_list[i]->thumbnail_file;
 			if (boost::filesystem::exists(plate_data_list[i]->thumbnail_file)) {
@@ -6110,7 +6187,7 @@ int PartPlateList::load_from_3mf_structure(PlateDataPtrs& plate_data_list, int f
 				m_plate_list[index]->load_pattern_box_data(plate_data_list[i]->pattern_bbox_file);
 			}
 		}
-
+#endif
 	}
 	print();
 	ret = reload_all_objects();
@@ -6118,6 +6195,8 @@ int PartPlateList::load_from_3mf_structure(PlateDataPtrs& plate_data_list, int f
 
 	return ret;
 }
+
+#ifndef SLIC3R_HEADLESS
 
 //load gcode files
 int PartPlateList::load_gcode_files()
@@ -6147,6 +6226,8 @@ int PartPlateList::load_gcode_files()
 	return ret;
 }
 
+#endif
+
 void PartPlateList::print() const
 {
 	BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << boost::format("PartPlateList %1%, m_plate_count %2%, current_plate %3%, print_count %4%, current print index %5%, plate cols %6%") % this % m_plate_count % m_current_plate % m_print_list.size() % m_print_index % m_plate_cols;
@@ -6166,6 +6247,7 @@ void PartPlateList::print() const
 bool PartPlateList::is_load_bedtype_textures = false;
 bool PartPlateList::is_load_extruder_only_area_textures = false;
 bool PartPlateList::is_load_cali_texture     = false;
+#ifndef SLIC3R_HEADLESS
 
 void PartPlateList::BedTextureInfo::TexturePart::update_buffer()
 {
@@ -6213,7 +6295,6 @@ void PartPlateList::BedTextureInfo::reset()
     for (size_t i = 0; i < parts.size(); i++)
         parts[i].reset();
 }
-
 void PartPlateList::init_bed_type_info()
 {
 	BedTextureInfo::TexturePart pct_part_left(10, 130,  10, 110, "orca_bed_pct_left.svg");
@@ -6448,7 +6529,6 @@ bool PartPlateList::init_extruder_only_area_info()
     }
     return true;
 }
-
 void PartPlateList::load_bedtype_textures()
 {
 	if (PartPlateList::is_load_bedtype_textures) return;
@@ -6497,7 +6577,6 @@ void PartPlateList::load_extruder_only_area_textures() {
     }
     PartPlateList::is_load_extruder_only_area_textures = true;
 }
-
 void PartPlateList::init_cali_texture_info()
 {
 	BedTextureInfo::TexturePart cali_line(18, 2, 224, 16, "bbl_cali_lines.svg");
@@ -6531,6 +6610,7 @@ void PartPlateList::load_cali_textures()
 	}
 	PartPlateList::is_load_cali_texture = true;
 }
+#endif
 
 void PartPlateList::on_extruder_count_changed(int extruder_count)
 {
