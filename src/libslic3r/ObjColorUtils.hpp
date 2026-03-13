@@ -9,8 +9,10 @@
 #include <vector>
 #include <opencv2/imgproc.hpp>
 
-#include "opencv2/opencv.hpp"
 #include "libslic3r/Color.hpp"
+
+#if !defined(SLIC3R_HEADLESS)
+#include "opencv2/opencv.hpp"
 class QuantKMeans
 {
 public:
@@ -273,3 +275,16 @@ bool obj_color_deal_algo(std::vector<Slic3r::RGBA> &input_colors,
                          std::vector<int>&            cluster_labels_from_algo,
                          char &                     cluster_number,
                          int                        max_cluster);
+#else
+inline bool obj_color_deal_algo(std::vector<Slic3r::RGBA> &input_colors,
+                                std::vector<Slic3r::RGBA> &cluster_colors_from_algo,
+                                std::vector<int> &cluster_labels_from_algo,
+                                char &cluster_number,
+                                int /*max_cluster*/)
+{
+    cluster_colors_from_algo = input_colors;
+    cluster_labels_from_algo.assign(input_colors.size(), 0);
+    cluster_number = 0;
+    return false;
+}
+#endif

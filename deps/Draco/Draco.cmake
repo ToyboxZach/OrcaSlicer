@@ -10,4 +10,5 @@ orcaslicer_add_cmake_project(Draco
     CMAKE_ARGS
         # The encoder and decoder tools duplicate draco.lib; see deps-windows.cmake.
         "${DEP_LLD_FORCE_MULTIPLE}"
+        -DDRACO_INSTALL=ON
 )

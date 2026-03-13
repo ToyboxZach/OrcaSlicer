@@ -45,20 +45,25 @@ else ()
         endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
-            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a") # Works on RPi-4
+            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a -DNO_ASM") # Works on RPi-4
             set(_gmp_build_tgt armv7)
         endif()
-        set(_gmp_build_tgt "--build=${_gmp_build_tgt}-pc-linux-gnu")
+        if (_gmp_build_tgt)
+            set(_gmp_build_tgt "--build=${_gmp_build_tgt}-pc-linux-gnu")
+        else()
+            set(_gmp_build_tgt "") # let GMP guess when processor is unknown
+        endif()
     else ()
         set(_gmp_build_tgt "") # let it guess
     endif()
 
     set(_cross_compile_arg "")
-    if (CMAKE_CROSSCOMPILING)
+    if (CMAKE_CROSSCOMPILING AND TOOLCHAIN_PREFIX)
         # TOOLCHAIN_PREFIX should be defined in the toolchain file
         set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
     endif ()
 
+    if (NOT EMSCRIPTEN)
     # 6.3.0 is the first release whose arm64 assembly avoids x18, which macOS
     # reserves and zeroes on every return to user space; 6.2.1 crashes on Apple
     # silicon whenever CGAL falls back to exact arithmetic.
@@ -73,4 +78,20 @@ else ()
         BUILD_COMMAND     make -j
         INSTALL_COMMAND   make install
     )
+    else ()
+        # Use CMake-provided Emscripten flags which include -matomics -mbulk-memory
+        string(APPEND _gmp_ccflags " ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+        string(APPEND _gmp_ccflags " -pthread -matomics -mbulk-memory")
+        ExternalProject_Add(dep_GMP
+            URL https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+                https://github.com/SoftFever/OrcaSlicer_deps/releases/download/gmp-6.3.0/gmp-6.3.0.tar.xz
+            URL_HASH SHA256=a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898
+            DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/GMP
+            BUILD_IN_SOURCE ON
+            PATCH_COMMAND   echo "#! /bin/sh" > tmp && echo "unset HOST_CC" >> tmp &&  cat ./configure >> tmp && mv tmp ./configure && chmod +x ./configure
+            CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" CC_FOR_BUILD=gcc emconfigure ./configure --enable-cxx --host=none  --enable-fft=yes  --enable-alloca=malloc-notreentrant --enable-shared=no --enable-static=yes   "--prefix=${DESTDIR}" ${_gmp_build_tgt}
+            BUILD_COMMAND     MPN_PATH="generic" emmake make -j
+            INSTALL_COMMAND   emmake make  install
+        )
+    endif()
 endif ()

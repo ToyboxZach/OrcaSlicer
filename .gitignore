@@ -55,3 +55,6 @@ __pycache__/
 /.test/
 docs/superpowers/
 ctest_results.xml
+orca-slicer.js
+orca-slicer.wasm
+orca-slicer.worker.js

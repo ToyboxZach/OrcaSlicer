@@ -26,7 +26,9 @@
 //BBS: add bbs 3mf
 #include "Format/bbs_3mf.hpp"
 //BBS: add step
+#if !defined(SLIC3R_HEADLESS)
 #include "Format/STEP.hpp"
+#endif
 //BBS: add stl
 #include "Format/STL.hpp"
 #include "Format/OBJ.hpp"
@@ -1763,6 +1765,7 @@ public:
 
     OBJECTBASE_DERIVED_COPY_MOVE_CLONE(Model)
 
+#if !defined(SLIC3R_HEADLESS)
     static Model read_from_step(const std::string&                                      input_file,
                                 LoadStrategy                                            options,
                                 ImportStepProgressFn                                    stepFn,
@@ -1771,6 +1774,7 @@ public:
                                 double                                                  linear_deflection,
                                 double                                                  angle_deflection,
                                 bool                                                    is_split_compound);
+#endif
 
     //BBS: add part plate related logic
     // BBS: backup
