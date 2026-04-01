@@ -8,7 +8,9 @@
 #include <vector>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
+#if !defined(SLIC3R_HEADLESS)
 #include <wx/colordlg.h>
+#endif
 #include <cmath>
 
 const static float param_13 = 1.0f / 3.0f;
@@ -241,7 +243,7 @@ float DeltaE76(float l1, float a1, float b1, float l2, float a2, float b2)
 {
     return std::sqrt(std::pow((l1 - l2), 2) + std::pow((a1 - a2), 2) + std::pow((b1 - b2), 2));
 }
-
+#if !defined(SLIC3R_HEADLESS)
 std::string color_to_string(const wxColour &color)
 {
     std::string str = std::to_string(color.Red()) + "," + std::to_string(color.Green()) + "," + std::to_string(color.Blue()) + "," + std::to_string(color.Alpha());
@@ -258,3 +260,4 @@ wxColour string_to_wxColor(const std::string &str)
     }
     return color;
 };
+#endif

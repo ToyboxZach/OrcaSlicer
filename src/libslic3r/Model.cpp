@@ -36,7 +36,9 @@
 #include "Format/AMF.hpp"
 #include "Format/svg.hpp"
 #include "Format/bbs_3mf.hpp"
+#if !defined(SLIC3R_HEADLESS)
 #include "Format/DRC.hpp"
+#endif
 // BBS
 #include "FaceDetector.hpp"
 
@@ -237,6 +239,7 @@ Model::~Model()
         Slic3r::remove_backup(*this, true);
 }
 
+#if !defined(SLIC3R_HEADLESS)
 Model Model::read_from_step(const std::string&                                      input_file,
                             LoadStrategy                                            options,
                             ImportStepProgressFn                                    stepFn,
@@ -290,6 +293,7 @@ _finished:
 
     return model;
 }
+#endif
 
 // BBS: add part plate related logic
 // BBS: backup & restore
@@ -459,8 +463,10 @@ Model Model::read_from_file(const std::string&                                  
         result = load_svg(input_file.c_str(), &model, message);
     //BBS: remove the old .amf.xml files
     //else if (boost::algorithm::iends_with(input_file, ".amf") || boost::algorithm::iends_with(input_file, ".amf.xml"))
+#if !defined(SLIC3R_HEADLESS)
     else if (boost::algorithm::iends_with(input_file, ".drc"))
         result = load_drc(input_file.c_str(), &model);
+#endif
     else if (boost::algorithm::iends_with(input_file, ".amf"))
         //BBS: is_xxx is used for is_inches when load amf
         result = load_amf(input_file.c_str(), config, config_substitutions, &model, is_xxx);

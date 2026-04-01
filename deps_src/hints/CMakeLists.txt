@@ -6,19 +6,21 @@ project(hints)
 # 1. An interface library for using hints in other projects
 # 2. An executable for the HintsToPot utility
 
-# Create the utility executable
-add_executable(hintsToPot
-    HintsToPot.cpp)
+# Create the utility executable (not needed for headless WASM builds)
+if (NOT EMSCRIPTEN)
+    add_executable(hintsToPot
+        HintsToPot.cpp)
 
-# Set include directories for the executable
-target_include_directories(hintsToPot SYSTEM
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-)
+    # Set include directories for the executable
+    target_include_directories(hintsToPot SYSTEM
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 
-# Link required libraries
-if(TARGET boost_libs)
-    target_link_libraries(hintsToPot PRIVATE boost_libs)
+    # Link required libraries
+    if(TARGET boost_libs)
+        target_link_libraries(hintsToPot PRIVATE boost_libs)
+    endif()
 endif()
 
 # Create an interface library for other projects to use
@@ -35,7 +37,7 @@ target_include_directories(hints SYSTEM
 target_compile_features(hints INTERFACE cxx_std_17)
 
 # Check if encoding_check function is available
-if(COMMAND encoding_check)
+if(COMMAND encoding_check AND TARGET hintsToPot)
     encoding_check(hintsToPot)
 endif()
 

@@ -48,6 +48,9 @@ unset(_rules_override)
 
 project(OrcaSlicer-deps)
 
+# Build options
+option(SLIC3R_HEADLESS "Build without GUI (excludes wxWidgets, JPEG, PNG, etc.)" ${EMSCRIPTEN})
+
 # Backward compatibility for old CMake versions
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_VERSION VERSION_LESS "3.25")
     set(LINUX ON CACHE BOOL "" FORCE)
@@ -349,7 +352,7 @@ if(FLATPAK)
     find_package(ZLIB)
     find_package(PNG)
     find_package(EXPAT)
-    find_package(CURL)
+   # find_package(CURL)
     find_package(JPEG)
     find_package(OpenSSL 1.1...<3.2)
     find_package(CURL)
@@ -361,7 +364,7 @@ if (NOT ZLIB_FOUND)
     set(ZLIB_PKG dep_ZLIB)
 endif ()
 set(PNG_PKG "")
-if (NOT PNG_FOUND)
+if (NOT PNG_FOUND AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(PNG/PNG.cmake)
     set(PNG_PKG dep_PNG)
 endif ()
@@ -374,23 +377,40 @@ endif ()
 
 # The order of includes respects the dependencies between libraries
 set(DEP_Boost_COMPONENTS system iostreams filesystem thread log locale regex date_time)
+
+set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")
+set(DEP_EMSCRIPT_C_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C release flags")
+if (EMSCRIPTEN)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEP_EMSCRIPT_C_FLAGS_RELEASE}")
+    # Propagate flags to all orcaslicer_add_cmake_project ExternalProject children.
+    set(DEP_CMAKE_OPTS
+        "-DCMAKE_C_FLAGS_RELEASE:STRING=${CMAKE_C_FLAGS_RELEASE}"
+        "-DCMAKE_CXX_FLAGS_RELEASE:STRING=${CMAKE_CXX_FLAGS_RELEASE}"
+    )
+endif ()
+
 include(Boost/Boost.cmake)
 
 include(Cereal/Cereal.cmake)
 include(Qhull/Qhull.cmake)
 
-include(GLFW/GLFW.cmake)
 set(SLVS_PKG "")
-if (SLIC3R_CAD)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    include(GLFW/GLFW.cmake)
+endif ()
+if (SLIC3R_CAD AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(SLVS/SLVS.cmake)
     set(SLVS_PKG dep_SLVS)
 endif ()
 
 include(TBB/TBB.cmake)
 
-include(Blosc/Blosc.cmake)
-include(OpenEXR/OpenEXR.cmake)
-include(OpenVDB/OpenVDB.cmake)
+if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    include(Blosc/Blosc.cmake)
+    include(OpenEXR/OpenEXR.cmake)
+    include(OpenVDB/OpenVDB.cmake)
+endif()
 
 include(GMP/GMP.cmake)
 include(MPFR/MPFR.cmake)
@@ -400,44 +420,38 @@ include(CGAL/CGAL.cmake)
 include(NLopt/NLopt.cmake)
 include(libnoise/libnoise.cmake)
 
-include(Draco/Draco.cmake)
-
-# I *think* 1.1 is used for *just* md5 hashing?
-# 3.1 has everything in the right place, but the md5 funcs used are deprecated
-# a grep across the repo shows it is used for other things
-# TODO: update openssl and everything that uses <openssl/md5.h>
 set(OPENSSL_PKG "")
-if(NOT OPENSSL_FOUND)
-    include(OpenSSL/OpenSSL.cmake)
-    set(OPENSSL_PKG dep_OpenSSL)
+set(CURL_PKG "")
+set(DATACHANNEL_PKG "")
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    include(Draco/Draco.cmake)
+    if(NOT OPENSSL_FOUND)
+        include(OpenSSL/OpenSSL.cmake)
+        set(OPENSSL_PKG dep_OpenSSL)
+    endif()
+    include(FFMPEG/FFMPEG.cmake)
+    include(Assimp/Assimp.cmake)
+    include(DataChannel/DataChannel.cmake)
+    set(DATACHANNEL_PKG dep_DataChannel)
+    if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
+        include(CURL/CURL.cmake)
+        set(CURL_PKG dep_CURL)
+    endif ()
 endif()
 
-include(FFMPEG/FFMPEG.cmake)
-include(Assimp/Assimp.cmake)
-
-include(DataChannel/DataChannel.cmake)
-set(DATACHANNEL_PKG dep_DataChannel)
-
-# we don't want to load a "wrong" openssl when loading curl
-# so, just don't even bother
-# ...i think this is how it works? change if wrong
-set(CURL_PKG "")
-if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
-    include(CURL/CURL.cmake)
-    set(CURL_PKG dep_CURL)
-endif ()
-
 set(JPEG_PKG "")
-if (NOT JPEG_FOUND)
+if (NOT JPEG_FOUND AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     include(JPEG/JPEG.cmake)
     set(JPEG_PKG dep_JPEG)
 endif()
 
 # flatpak builds wxwidgets separately, so it is not included in the deps target
 set(WXWIDGETS_PKG "")
-include(wxWidgets/wxWidgets.cmake)
-if (NOT FLATPAK)
-    set(WXWIDGETS_PKG "dep_wxWidgets")
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    include(wxWidgets/wxWidgets.cmake)
+    if (NOT FLATPAK)
+        set(WXWIDGETS_PKG "dep_wxWidgets")
+    endif()
 endif()
 
 execute_process(
@@ -454,10 +468,12 @@ if((REV_PARSE_RESULT EQUAL 0) AND (REV_PARSE_OUTPUT STREQUAL "true"))
     file(RELATIVE_PATH BINARY_DIR_REL  ${CMAKE_SOURCE_DIR}/.. ${CMAKE_BINARY_DIR})
 endif ()
 
-include(OCCT/OCCT.cmake)
-include(OpenCV/OpenCV.cmake)
-include(python3/python3.cmake)
-include(wxInspector/wxInspector.cmake)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    include(OCCT/OCCT.cmake)
+    include(OpenCV/OpenCV.cmake)
+    include(python3/python3.cmake)
+    include(wxInspector/wxInspector.cmake)
+endif ()
 
 set(_dep_list
     dep_Boost
@@ -466,25 +482,30 @@ set(_dep_list
     ${CURL_PKG}
     ${WXWIDGETS_PKG}
     dep_Cereal
-    dep_Draco
     dep_NLopt
-    dep_OpenVDB
     ${SLVS_PKG}
-    dep_OpenCV
     dep_Eigen
     dep_CGAL
-    dep_GLFW
-    dep_OCCT
     ${PNG_PKG}
     ${ZLIB_PKG}
     ${EXPAT_PKG}
     dep_libnoise
-    dep_python3
-    dep_wxInspector
-    dep_FFMPEG
-    dep_Assimp
     ${DATACHANNEL_PKG}
     )
+
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    list(APPEND _dep_list
+        dep_OpenVDB
+        dep_OpenCV
+        dep_GLFW
+        dep_OCCT
+        dep_Draco
+        dep_python3
+        dep_wxInspector
+        dep_FFMPEG
+        dep_Assimp
+    )
+endif()
 
 if (MSVC)
     # Experimental

@@ -27,7 +27,9 @@
 #include <thread>
 #include <mutex>
 #include <memory>
+#ifndef SLIC3R_HEADLESS
 #include <wx/types.h>
+#endif
 
 #include "libslic3r/ObjectID.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -35,21 +37,36 @@
 #include "libslic3r/Slicing.hpp"
 #include "libslic3r/GCode/WipeTowerEstimate.hpp"
 #include "libslic3r/Arrange.hpp"
+#if !defined(SLIC3R_HEADLESS) 
 #include "Plater.hpp"
+#endif
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#if !defined(SLIC3R_HEADLESS) 
 #include "GLCanvas3D.hpp"
 #include "GLTexture.hpp"
 #include "3DScene.hpp"
 #include "GLModel.hpp"
 #include "3DBed.hpp"
+#else
+
+class Plater {
+    public:
+    void set_bed_position(Slic3r::Vec2d& pos){}
+    void take_snapshot(const std::string& snapshot_name){}
+};
+class GLTexture;
+#endif
 #include "MeshUtils.hpp"
 #include "libslic3r/ParameterUtils.hpp"
 
+#ifndef SLIC3R_HEADLESS
 class GLUquadric;
 typedef class GLUquadric GLUquadricObject;
+std::vector<int> get_min_flush_volumes(const DynamicPrintConfig &full_config, size_t nozzle_id);
 
+#endif
 
 // use PLATE_CURRENT_IDX stands for using current plate
 // and use PLATE_ALL_IDX
@@ -75,7 +92,6 @@ inline int compute_colum_count(int count)
 
 extern const float WIPE_TOWER_DEFAULT_X_POS;
 extern const float WIPE_TOWER_DEFAULT_Y_POS;  // Max y
-
 extern const float I3_WIPE_TOWER_DEFAULT_X_POS;
 extern const float I3_WIPE_TOWER_DEFAULT_Y_POS; // Max y
 
@@ -90,7 +106,17 @@ class Print;
 class SLAPrint;
 
 namespace GUI {
+#ifdef SLIC3R_HEADLESS
+class Plater {
+public:
+    void set_bed_position(Slic3r::Vec2d& pos){}
+    void take_snapshot(const std::string& snapshot_name){}
+private:
+    Plater() {}
+};
+#else
 class Plater;
+#endif
 class GLCanvas3D;
 struct Camera;
 class PartPlateList;
@@ -159,6 +185,7 @@ private:
     Slic3r::Geometry::Transformation position;
     std::vector<Vec3f> positions;
     ExPolygon m_print_polygon;
+#ifndef SLIC3R_HEADLESS
     PickingModel m_triangles;
     GLModel m_exclude_triangles;
     GLModel m_wrapping_detection_triangles;
@@ -200,9 +227,9 @@ private:
     GLModel      m_imex_warn_icon;   // warning badge: IMEX parallel mode + multi-material conflict
     GLModel m_plate_idx_icon;
     GLTexture m_texture;
-
     float m_scale_factor{ 1.0f };
     GLUquadricObject* m_quadric;
+#endif
     int m_hover_id;
     bool m_selected;
     int m_timelapse_warning_code = 0;
@@ -213,10 +240,12 @@ private:
     // SoftFever
     // part plate name
     std::string m_name;
+#ifndef SLIC3R_HEADLESS
     GLModel m_plate_name_icon;
     GLTexture m_name_texture;
     wxCoord m_name_texture_width;
     wxCoord m_name_texture_height;
+#endif
 
     // Copies m_name to the Print; invalidates the G-code export if a G-code template uses {plate_name}.
     void sync_plate_name_to_print();
@@ -227,10 +256,12 @@ private:
     void generate_exclude_polygon(ExPolygon &exclude_polygon);
     void generate_logo_polygon(ExPolygon &logo_polygon);
     void calc_bounding_boxes() const;
+#ifndef SLIC3R_HEADLESS
     void calc_triangles(const ExPolygon& poly);
     void calc_exclude_triangles(const ExPolygon& poly);
     void calc_triangles_from_polygon(const ExPolygon &poly, GLModel& render_model);
     void calc_gridlines(const ExPolygon& poly, const BoundingBox& pp_bbox);
+#endif
     void calc_height_limit();
     void calc_imex_zones();
     void ensure_imex_zones();
@@ -243,6 +274,7 @@ private:
     // Returns false (and leaves outputs untouched) if IMEX is off, mode is empty/"primary",
     // mode config is missing, the mode isn't listed, or no primary is found.
     bool resolve_active_mode_tools(std::string& out_tools_str, int& out_primary_phys) const;
+#ifndef SLIC3R_HEADLESS
     void render_imex_zones(bool force_default_color);
     void refresh_imex_icon();
     float icon_scale_factor() const;
@@ -278,6 +310,7 @@ private:
     void invalidate_plate_name_texture();
     void register_raycasters_for_picking(GLCanvas3D& canvas);
     int picking_id_component(int idx) const;
+#endif
 
     void on_filament_map_mode_change();
     // What a re-placed tower keeps clear of: each printable instance's convex hull, grown by its
@@ -307,6 +340,7 @@ public:
         return IMEX_GHOST_COMPOSITE_ID_BASE - physical_head;
     }
 
+#ifndef SLIC3R_HEADLESS
     static ColorRGBA SELECT_COLOR;
     static ColorRGBA UNSELECT_COLOR;
     static ColorRGBA UNSELECT_DARK_COLOR;
@@ -321,12 +355,16 @@ public:
 
     static void update_render_colors();
     static void load_render_colors();
+#endif
 
     PartPlate();
     PartPlate(PartPlateList *partplate_list, Vec3d origin, int width, int depth, double height, Plater* platerObj, Model* modelObj, bool printable=true, PrinterTechnology tech = ptFFF);
     ~PartPlate();
 
+#ifndef SLIC3R_HEADLESS
     bool operator<(PartPlate&) const;
+
+#endif
 
     //clear alll the instances in plate
     void clear(bool clear_sliced_result = true);
@@ -391,6 +429,7 @@ public:
     void              set_imex_head_filament_map(const std::map<int,int>& m);
     void              reset_imex_head_filament_map();
 
+#ifndef SLIC3R_HEADLESS
     // Returns the RGBA color a ghost rendered for `physical_head` should use,
     // respecting any imex_head_filament_map override. Falls back to GLVolume::UNPRINTABLE_COLOR
     // when no filament routes to the head.
@@ -420,6 +459,7 @@ public:
 
     // Invalidate the ghost cache so the next render_imex_zones() call rebuilds fully.
     void invalidate_imex_ghosts() { m_imex_ghost_cache_key = "\x01"; }
+#endif
 
     std::vector<Vec2d> get_plate_wrapping_detection_area() const;
 
@@ -448,7 +488,9 @@ public:
     // SoftFever
     //get the plate's name
     std::string get_plate_name() const { return m_name; }
+#ifndef SLIC3R_HEADLESS
     void generate_plate_name_texture();
+#endif
     //set the plate's name
     void set_plate_name(const std::string& name);
 
@@ -495,13 +537,16 @@ public:
     // expand_mixed_slots = false keeps mixed filament slots as slots instead of their components.
     // Callers that mirror Print::validate need that form: validate counts the mixed slot itself,
     // so an expanded list makes the two disagree.
+#ifndef SLIC3R_HEADLESS
     std::vector<int> get_extruders(bool conside_custom_gcode = false, bool expand_mixed_slots = true) const;
+#endif
     std::vector<int> get_extruders(bool conside_custom_gcode, const DynamicPrintConfig& glb_config, const DynamicPrintConfig& project_config, bool expand_mixed_slots = true) const;
     std::vector<int> get_extruders_under_cli(bool conside_custom_gcode, DynamicPrintConfig& full_config, bool expand_mixed_slots = true) const;
     std::vector<int> get_extruders_without_support(bool conside_custom_gcode = false) const;
     // get used filaments from gcode result, 1 based idx
     std::vector<int> get_used_filaments();
     const std::vector<FilamentInfo>& get_slice_filaments_info() const { return slice_filaments_info; }
+#ifndef SLIC3R_HEADLESS
     int  get_physical_extruder_by_filament_id(const DynamicConfig& g_config, int idx) const;
     int  get_logical_extruder_by_filament_id(const DynamicConfig& g_config, int idx) const;
     // Resolve the mapping policy used specifically by exclusion regions.
@@ -515,13 +560,18 @@ public:
     std::map<int, size_t> get_object_filament_extruders(const ModelObject &object, const DynamicConfig &g_config,
                                                         size_t extruder_count) const;
     bool check_filament_printable(const DynamicPrintConfig & config, wxString& error_message);
+#endif
+ 
     bool check_tpu_printable_status(const DynamicPrintConfig & config, const std::vector<int> &tpu_filaments);
+
+#ifndef SLIC3R_HEADLESS
     bool check_mixture_of_pla_and_petg(const DynamicPrintConfig & config);
     // Warns when a mixed-color filament is used on a single-nozzle printer, where every
     // component switch costs a full filament change and purge.
     bool check_single_extruder_mixed_filament_risk(const DynamicPrintConfig &config, std::string &warning_text) const;
     bool check_mixture_filament_compatible(const DynamicPrintConfig& config, std::string &error_msg);
     bool check_compatible_of_nozzle_and_filament(const DynamicPrintConfig & config, const std::vector<std::string>& filament_presets, std::string& error_msg);
+#endif
 
     /* instance related operations*/
     //judge whether instance is bound in plate or not
@@ -578,11 +628,14 @@ public:
 
     /*rendering related functions*/
     const Pointfs& get_shape() const { return m_shape; }
+    
     bool set_shape(const Pointfs& shape, const Pointfs& exclude_areas, const std::vector<Pointfs>& extruder_areas, const std::vector<double>& extruder_heights, Vec2d position, float height_to_lid, float height_to_rod);
     const std::vector<Pointfs>& get_extruder_areas() const { return m_extruder_areas; }
     const std::vector<double>& get_extruder_heights() const { return m_extruder_heights; }
     bool contains(const Vec3d& point) const;
+#ifndef SLIC3R_HEADLESS
     bool contains(const GLVolume& v) const;
+#endif
     bool contains(const BoundingBoxf3& bb) const;
     bool intersects(const BoundingBoxf3& bb) const;
     // A belt printer with belt_printer_infinite_y: the plate is open along Y for the
@@ -590,7 +643,9 @@ public:
     bool belt_open_y() const;
     void open_belt_y(BoundingBoxf3 &box) const { if (this->belt_open_y()) { box.min.y() = -1e5; box.max.y() = 1e5; } }
 
+#ifndef SLIC3R_HEADLESS
     void render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_body = false, bool force_background_color = false, HeightLimitMode mode = HEIGHT_LIMIT_NONE, int hover_id = -1, bool render_cali = false, bool show_grid = true, bool hide_chrome = false);
+#endif
 
     void set_selected();
     void set_unselected();
@@ -622,6 +677,7 @@ public:
     {
         return m_ready_for_slice && !m_apply_invalid;
     }
+#ifndef SLIC3R_HEADLESS
     // What (if anything) on this plate overlaps an IDEX/IQEX secondary or collision zone.
     // Reported as a cause rather than a bool so the caller can name the offender; the
     // message text lives at the Plater layer where it can be translated.
@@ -644,6 +700,7 @@ public:
     // Returns carriage collision strips (mm) for the current IDEX/IQEX mode.
     // Always call imex_primary_zone() first to ensure the cache is warm.
     const std::vector<BoundingBoxf3>& imex_collision_zones() const { return m_imex_collision_zones; }
+#endif
     void update_slice_ready_status(bool ready_slice)
     {
         m_ready_for_slice = ready_slice;
@@ -693,8 +750,10 @@ public:
     float get_slicing_percent() { return m_slice_percent; }
 
     /*slice related functions*/
+#ifndef SLIC3R_HEADLESS
     //update current slice context into backgroud slicing process
     void update_slice_context(BackgroundSlicingProcess& process);
+#endif
     //return the fff print object
     Print* fff_print() { return m_print; }
     //return the slice result
@@ -745,7 +804,9 @@ public:
         for (std::vector<std::pair<int, int>>::iterator it = instances_outside.begin(); it != instances_outside.end(); ++it)
             instance_outside_set.insert(std::pair(it->first, it->second));
 
+#ifndef SLIC3R_HEADLESS
         invalidate_exclusion_volume_preview();
+#endif
     }
     template<class Archive> void save(Archive& ar) const {
         std::vector<std::pair<int, int>>	objects_and_instances;
@@ -800,6 +861,7 @@ class PartPlateList : public ObjectBase
     BoundingBoxf3 m_bounding_box;
     bool m_intialized;
     std::string m_logo_texture_filename;
+#ifndef SLIC3R_HEADLESS
     GLTexture m_logo_texture;
     GLTexture m_del_texture;
     GLTexture m_del_hovered_texture;
@@ -834,6 +896,7 @@ class PartPlateList : public ObjectBase
 
     bool m_is_dark = false;
     bool m_icon_textures_dark = false;
+#endif
 
     int m_filament_count = 1;
 
@@ -845,15 +908,18 @@ class PartPlateList : public ObjectBase
     //compute shape position
     Vec2d compute_shape_position(int index, int cols);
     //generate icon textures
+#ifndef SLIC3R_HEADLESS
     void generate_icon_textures();
     void release_icon_textures();
 
+    void set_default_wipe_tower_pos_for_plate(int plate_idx, bool init_pos = false);
+#endif
     friend class cereal::access;
     friend class UndoRedo::StackImpl;
     friend class PartPlate;
 
 public:
-    void set_default_wipe_tower_pos_for_plate(int plate_idx, bool init_pos = false);
+#ifndef SLIC3R_HEADLESS
     class BedTextureInfo {
     public:
         class TexturePart {
@@ -892,9 +958,12 @@ public:
         std::vector<TexturePart> parts;
         void                     reset();
     };
+#endif
 
     static constexpr unsigned int MAX_PLATES_COUNT = MAX_PLATE_COUNT;
+#ifndef SLIC3R_HEADLESS
     static GLTexture bed_textures[(unsigned int)btCount];
+#endif
     static bool is_load_bedtype_textures;
     static bool is_load_cali_texture;
     static bool is_load_extruder_only_area_textures;
@@ -978,9 +1047,10 @@ public:
     Vec2d get_current_shape_position() { return compute_shape_position(m_current_plate, m_plate_cols); }
     Pointfs get_exclude_area() { return m_exclude_areas; }
     Pointfs get_wrapping_exclude_area() const { return m_wrapping_exclude_areas; }
+#ifndef SLIC3R_HEADLESS
 
     std::set<int> get_extruders(bool conside_custom_gcode = false) const;
-
+#endif
     //select plate
     int select_plate(int index);
 
@@ -1056,6 +1126,7 @@ public:
     void postprocess_arrange_polygon(arrangement::ArrangePolygon& arrange_polygon, bool selected);
 
     /*rendering related functions*/
+#ifndef SLIC3R_HEADLESS
     void on_change_color_mode(bool is_dark) { m_is_dark = is_dark; }
     void render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_current = false, bool only_body = false, int hover_id = -1, bool render_cali = false, bool show_grid = true, bool hide_chrome = false, bool hide_inactive = false);
     void set_render_option(bool bedtype_texture, bool plate_settings);
@@ -1067,11 +1138,14 @@ public:
         for (auto plate : m_plate_list)
             plate->register_raycasters_for_picking(canvas);
     }
+#endif
     BoundingBoxf3& get_bounding_box() { return m_bounding_box; }
     //int select_plate_by_hover_id(int hover_id);
     int select_plate_by_obj(int obj_index, int instance_index);
     void calc_bounding_boxes();
+#ifndef SLIC3R_HEADLESS
     void select_plate_view();
+#endif
     bool set_shapes(const Pointfs              &shape,
                     const Pointfs              &exclude_areas,
                     const Pointfs              &wrapping_exclude_areas,
@@ -1084,12 +1158,13 @@ public:
     void reset_hover_id();
     bool intersects(const BoundingBoxf3 &bb);
     bool contains(const BoundingBoxf3 &bb);
-
+#ifndef SLIC3R_HEADLESS
     const std::string &get_logo_texture_filename() { return m_logo_texture_filename; }
     void               update_logo_texture_filename(const std::string &texture_filename);
     /*slice related functions*/
     //update current slice context into backgroud slicing process
     void update_slice_context_to_current_plate(BackgroundSlicingProcess& process);
+#endif
     //return the current fff print object
     Print& get_current_fff_print() const;
     //return the slice result
@@ -1138,6 +1213,7 @@ public:
         int w;
         int h;
     };
+#ifndef SLIC3R_HEADLESS
     bool calc_extruder_only_area(Rect &left_only_rect, Rect &right_only_rect);
     void init_bed_type_info();
     bool init_extruder_only_area_info();
@@ -1160,6 +1236,7 @@ public:
     // Loads the next bed-type, calibration or extruder-area texture, or the logo, which rendering
     // otherwise loads on first use; false once none remain.
     bool load_next_plate_texture();
+#endif
 
     void on_extruder_count_changed(int extruder_count);
     // Re-position the IMEX mode icon on all plates without a full shape rebuild.
@@ -1170,6 +1247,7 @@ public:
     void on_filament_added(int filament_count);
 
     std::map<int, bool> m_allow_bed_type_in_double_nozzle;
+#ifndef SLIC3R_HEADLESS
     BedTextureInfo bed_texture_info[btCount];
     BedTextureInfo cali_texture_info;
     BedTextureInfo extruder_only_area_info[(unsigned char) Slic3r::ExtruderOnlyAreaType::btAreaCount];
@@ -1180,6 +1258,7 @@ private:
     size_t m_next_bedtype_texture{ 0 };
     size_t m_next_cali_texture{ 0 };
     size_t m_next_extruder_only_area_texture{ 0 };
+#endif
 };
 
 } // namespace GUI
