@@ -62,7 +62,6 @@ if (APPLE)
     endif ()
     message(STATUS "CMAKE_OSX_DEPLOYMENT_TARGET: ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif ()
-
 project(OrcaSlicer)
 
 # Backward compatibility for old CMake versions
@@ -121,8 +120,9 @@ else()
     set(SLIC3R_STATIC_INITIAL 1)
 endif()
 
-option(SLIC3R_STATIC 			"Compile OrcaSlicer with static libraries (Boost, TBB, glew)" ${SLIC3R_STATIC_INITIAL})
-option(SLIC3R_GUI    			"Compile OrcaSlicer with GUI components (OpenGL, wxWidgets)" 1)
+option(SLIC3R_STATIC 			"Compile OrcaSlicer with static libraries (Boost, TBB, glew)" 1)
+option(SLIC3R_GUI    			"Compile OrcaSlicer with GUI components (OpenGL, wxWidgets)" 0)
+option(SLIC3R_HEADLESS          "Build headless variant without SLA/resin features and advanced dependencies" 0)
 option(SLIC3R_FHS               "Assume OrcaSlicer is to be installed in a FHS directory structure" 0)
 option(SLIC3R_WX_STABLE         "Build against wxWidgets stable (3.0) as oppsed to dev (3.1) on Linux" 0)
 option(SLIC3R_PROFILE 			"Compile OrcaSlicer with an invasive Shiny profiler" 0)
@@ -132,6 +132,7 @@ option(SLIC3R_MSVC_PDB          "Generate PDB files on MSVC in Release mode" 1)
 option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
 # If SLIC3R_FHS is 1 -> SLIC3R_DESKTOP_INTEGRATION is always 0, othrewise variable.
 CMAKE_DEPENDENT_OPTION(SLIC3R_DESKTOP_INTEGRATION "Allow performing desktop integration during runtime" 1 "NOT SLIC3R_FHS" 0)
+
 
 set(OPENVDB_FIND_MODULE_PATH "" CACHE PATH "Path to OpenVDB installation's find modules.")
 
@@ -508,8 +509,33 @@ message(STATUS "LIBDIR_BIN: ${LIBDIR_BIN}")
 include_directories(SYSTEM ${LIBDIR})
 # For generated header files
 include_directories(SYSTEM ${LIBDIR_BIN}/dev-utils/platform)
+# For generated libslic3r headers consumed by deps_src (for example libnest2d -> libslic3r.h -> libslic3r_version.h)
+include_directories(SYSTEM ${LIBDIR_BIN}/libslic3r)
+# For bundled Eigen header-only library (consumed by deps_src targets like libnest2d)
+include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/deps_src/eigen)
+# For bundled Cereal header-only library (consumed by libslic3r)
+include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/deps_src/cereal/include)
 # For ligigl
 include_directories(SYSTEM ${LIBDIR}/libigl)
+
+#WASM STUFF
+set(EMSCRIPT_CXX_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1" CACHE STRING "Emscripten C++ compile flags for OrcaSlicer")
+set(EMSCRIPT_C_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions" CACHE STRING "Emscripten C compile flags for OrcaSlicer")
+
+if (EMSCRIPTEN)
+    # Auto-enable headless mode for WASM builds
+    set(SLIC3R_HEADLESS ON CACHE BOOL "" FORCE)
+    
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMSCRIPT_CXX_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EMSCRIPT_C_FLAGS}")
+
+    add_link_options("SHELL:${CMAKE_MODULE_LINKER_FLAGS}")
+endif ()
+
+if (SLIC3R_HEADLESS)
+    add_definitions(-DSLIC3R_HEADLESS)
+endif ()
+
 
 if(WIN32)
     add_definitions(-D_USE_MATH_DEFINES -D_WIN32 -D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS)
@@ -582,8 +608,24 @@ endif()
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
-set(Boost_NO_SYSTEM_PATHS TRUE)
-find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
+
+# For WASM builds, manually set Boost paths since Emscripten's CMake environment
+# interferes with standard library detection. For native builds, use standard finder.
+if(EMSCRIPTEN)
+  # Manual Boost detection for WASM - directly construct library paths
+  set(Boost_FOUND TRUE)
+  set(Boost_INCLUDE_DIR "${BOOST_INCLUDEDIR}")
+  set(Boost_INCLUDE_DIRS "${BOOST_INCLUDEDIR}")
+  set(BOOST_COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
+  set(Boost_LIBRARIES)
+  foreach(component ${BOOST_COMPONENTS})
+    list(APPEND Boost_LIBRARIES "${BOOST_LIBRARYDIR}/libboost_${component}.a")
+  endforeach()
+  message(STATUS "WASM Boost libs: ${Boost_LIBRARIES}")
+else()
+  set(Boost_NO_SYSTEM_PATHS TRUE)
+  find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
+endif()
 
 add_library(boost_libs INTERFACE)
 add_library(boost_headeronly INTERFACE)
@@ -611,6 +653,8 @@ endfunction()
 
 target_include_directories(boost_headeronly SYSTEM INTERFACE ${Boost_INCLUDE_DIRS})
 target_link_libraries(boost_libs INTERFACE boost_headeronly ${Boost_LIBRARIES})
+include_directories(${Boost_INCLUDE_DIRS})
+include_directories("${CMAKE_PREFIX_PATH}/include")
 
 # Find and configure intel-tbb
 if(SLIC3R_STATIC)
@@ -618,7 +662,36 @@ if(SLIC3R_STATIC)
 endif()
 set(TBB_DEBUG 1)
 set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RelWithDebInfo Release "")
-find_package(TBB REQUIRED)
+
+# For WASM builds, manually configure TBB since standard finder fails with Emscripten
+if(EMSCRIPTEN)
+  # Manual TBB detection for WASM - directly construct library paths
+  set(TBB_FOUND TRUE)
+  set(TBB_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+  set(TBB_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libtbb.a")
+  if(EXISTS "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a")
+    list(APPEND TBB_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a")
+  endif()
+  message(STATUS "WASM TBB: includes=${TBB_INCLUDE_DIRS}, libs=${TBB_LIBRARIES}")
+    if (NOT TARGET TBB::tbb)
+        add_library(TBB::tbb STATIC IMPORTED)
+        set_target_properties(TBB::tbb PROPERTIES
+            IMPORTED_LOCATION "${CMAKE_PREFIX_PATH}/lib/libtbb.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${TBB_INCLUDE_DIRS}"
+        )
+    endif()
+    if (EXISTS "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a")
+        if (NOT TARGET TBB::tbbmalloc)
+            add_library(TBB::tbbmalloc STATIC IMPORTED)
+            set_target_properties(TBB::tbbmalloc PROPERTIES
+                IMPORTED_LOCATION "${CMAKE_PREFIX_PATH}/lib/libtbbmalloc.a"
+                INTERFACE_INCLUDE_DIRECTORIES "${TBB_INCLUDE_DIRS}"
+            )
+        endif()
+    endif()
+else()
+  find_package(TBB REQUIRED)
+endif()
 # include_directories(SYSTEM ${TBB_INCLUDE_DIRS})
 # add_definitions(${TBB_DEFINITIONS})
 # if(MSVC)
@@ -628,16 +701,33 @@ find_package(TBB REQUIRED)
 # The Intel TBB library will use the std::exception_ptr feature of C++11.
 # add_definitions(-DTBB_USE_CAPTURED_EXCEPTION=0)
 
-find_package(OpenSSL REQUIRED)
-find_package(CURL REQUIRED)
-find_package(Freetype REQUIRED)
+if(NOT EMSCRIPTEN)
+    find_package(OpenSSL REQUIRED)
+    find_package(CURL REQUIRED)
+    find_package(Freetype REQUIRED)
+endif()
 
 
-add_library(libcurl INTERFACE)
-target_link_libraries(libcurl INTERFACE CURL::libcurl)
+#add_library(libcurl INTERFACE)
+#target_link_libraries(libcurl INTERFACE CURL::libcurl)
 
-find_package(ZLIB REQUIRED)
-target_link_libraries(libcurl INTERFACE ZLIB::ZLIB)
+# For WASM builds, manually configure ZLIB
+if(EMSCRIPTEN)
+  set(ZLIB_FOUND TRUE)
+  set(ZLIB_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+  set(ZLIB_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libz.a")
+  message(STATUS "WASM ZLIB: includes=${ZLIB_INCLUDE_DIRS}, libs=${ZLIB_LIBRARIES}")
+    if (NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB STATIC IMPORTED)
+        set_target_properties(ZLIB::ZLIB PROPERTIES
+            IMPORTED_LOCATION "${CMAKE_PREFIX_PATH}/lib/libz.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIRS}"
+        )
+    endif()
+else()
+  find_package(ZLIB REQUIRED)
+endif()
+#target_link_libraries(libcurl INTERFACE ZLIB::ZLIB)
 
 # Fixing curl's cmake config script bugs
 if (NOT WIN32)
@@ -647,23 +737,23 @@ if (NOT WIN32)
     #find_package(Libssh2 REQUIRED)
     #target_link_libraries(libcurl INTERFACE Libssh2::libssh2)
 else()
-    target_link_libraries(libcurl INTERFACE crypt32)
+   # target_link_libraries(libcurl INTERFACE crypt32)
 endif()
 
 if (SLIC3R_STATIC AND NOT SLIC3R_STATIC_EXCLUDE_CURL)
     if (NOT APPLE)
         # libcurl is always linked dynamically to the system libcurl on OSX.
         # On other systems, libcurl is linked statically if SLIC3R_STATIC is set.
-        target_compile_definitions(libcurl INTERFACE CURL_STATICLIB)
+       # target_compile_definitions(libcurl INTERFACE CURL_STATICLIB)
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # As of now, our build system produces a statically linked libcurl,
         # which links the OpenSSL library dynamically.
-        find_package(OpenSSL REQUIRED)
-        message("OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
-        message("OpenSSL libraries: ${OPENSSL_LIBRARIES}")
-        target_include_directories(libcurl SYSTEM INTERFACE ${OPENSSL_INCLUDE_DIR})
-        target_link_libraries(libcurl INTERFACE ${OPENSSL_LIBRARIES})
+       # find_package(OpenSSL REQUIRED)
+     #   message("OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
+     #   message("OpenSSL libraries: ${OPENSSL_LIBRARIES}")
+      #  target_include_directories(libcurl SYSTEM INTERFACE ${OPENSSL_INCLUDE_DIR})
+      #  target_link_libraries(libcurl INTERFACE ${OPENSSL_LIBRARIES})
     endif()
 endif()
 
@@ -682,23 +772,23 @@ include_directories(BEFORE SYSTEM ${EIGEN3_INCLUDE_DIR})
 # Find expat or use bundled version
 # Always use the system libexpat on Linux.
 
-find_package(EXPAT)
+#find_package(EXPAT)
 
 if (NOT EXPAT_FOUND)
-    add_library(expat STATIC
-        ${LIBDIR}/expat/xmlparse.c
-        ${LIBDIR}/expat/xmlrole.c
-        ${LIBDIR}/expat/xmltok.c
-    )
-    set(EXPAT_FOUND 1)
-    set(EXPAT_INCLUDE_DIRS ${LIBDIR}/expat/)
-    set(EXPAT_LIBRARIES expat)
+   # add_library(expat STATIC
+   #     ${LIBDIR}/expat/xmlparse.c
+   #     ${LIBDIR}/expat/xmlrole.c
+   #     ${LIBDIR}/expat/xmltok.c
+   # )
+   # set(EXPAT_FOUND 1)
+   # set(EXPAT_INCLUDE_DIRS ${LIBDIR}/expat/)
+   # set(EXPAT_LIBRARIES expat)
 endif ()
 
-find_package(PNG REQUIRED)
+#find_package(PNG REQUIRED)
 
 set(OpenGL_GL_PREFERENCE "LEGACY")
-find_package(OpenGL REQUIRED)
+#find_package(OpenGL REQUIRED)
 
 if(APPLE AND CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
     set(OPENGL_LIBRARIES "-framework OpenGL" CACHE STRING "OpenGL framework" FORCE)
@@ -712,30 +802,50 @@ if (SLIC3R_STATIC AND NOT SLIC3R_STATIC_EXCLUDE_GLEW)
     set(GLEW_VERBOSE ON)
 endif()
 
-find_package(GLEW REQUIRED)
+#find_package(GLEW REQUIRED)
 
-find_package(glfw3 REQUIRED)
+#find_package(glfw3 REQUIRED)
 
-# Find the Cereal serialization library
-find_package(cereal REQUIRED)
-if (NOT TARGET cereal::cereal)
-    set_target_properties(cereal PROPERTIES IMPORTED_GLOBAL TRUE)
-    add_library(cereal::cereal ALIAS cereal)
-else ()
-    set_target_properties(cereal::cereal PROPERTIES IMPORTED_GLOBAL TRUE)
-endif ()
+# Find the Cereal serialization library (header-only)
+if(EMSCRIPTEN)
+  # For WASM, set cereal include path manually since it's header-only
+    set(cereal_DIR "${CMAKE_PREFIX_PATH}" CACHE PATH "")
+  add_library(cereal INTERFACE IMPORTED)
+  set_target_properties(cereal PROPERTIES 
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_PREFIX_PATH}/include"
+    IMPORTED_GLOBAL TRUE)
+  add_library(cereal::cereal ALIAS cereal)
+else()
+  find_package(cereal REQUIRED)
+  if (NOT TARGET cereal::cereal)
+      set_target_properties(cereal PROPERTIES IMPORTED_GLOBAL TRUE)
+      add_library(cereal::cereal ALIAS cereal)
+  else ()
+      set_target_properties(cereal::cereal PROPERTIES IMPORTED_GLOBAL TRUE)
+  endif ()
+endif()
 
 # l10n
 set(L10N_DIR "${SLIC3R_RESOURCES_DIR}/i18n")
 set(BBL_L18N_DIR "${CMAKE_CURRENT_SOURCE_DIR}/localization/i18n")
-add_custom_target(gettext_make_pot
-    COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --no-location --debug --boost
-        -f "${BBL_L18N_DIR}/list.txt"
-        -o "${BBL_L18N_DIR}/OrcaSlicer.pot"
-	COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${BBL_L18N_DIR}
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Generate pot file from strings in the source tree"
-)
+if (TARGET hintsToPot)
+    add_custom_target(gettext_make_pot
+        COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --no-location --debug --boost
+            -f "${BBL_L18N_DIR}/list.txt"
+            -o "${BBL_L18N_DIR}/OrcaSlicer.pot"
+        COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${BBL_L18N_DIR}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Generate pot file from strings in the source tree"
+    )
+else()
+    add_custom_target(gettext_make_pot
+        COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --no-location --debug --boost
+            -f "${BBL_L18N_DIR}/list.txt"
+            -o "${BBL_L18N_DIR}/OrcaSlicer.pot"
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Generate pot file from strings in the source tree"
+    )
+endif()
 add_custom_target(gettext_merge_po_with_pot
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Merge localization po with new generated pot file"
@@ -767,22 +877,30 @@ foreach(po_file ${BBL_L10N_PO_FILES})
     )
 endforeach()
 
-find_package(NLopt 1.4 REQUIRED)
+# For WASM builds, manually configure NLopt
+if(EMSCRIPTEN)
+  set(NLopt_FOUND TRUE)
+  set(NLopt_INCLUDE_DIR "${CMAKE_PREFIX_PATH}/include")
+  set(NLopt_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/libnlopt.a")
+  message(STATUS "WASM NLopt: includes=${NLopt_INCLUDE_DIR}, libs=${NLopt_LIBRARIES}")
+else()
+  find_package(NLopt 1.4 REQUIRED)
+endif()
 
 
 if(SLIC3R_STATIC)
-    set(OPENVDB_USE_STATIC_LIBS ON)
+   # set(OPENVDB_USE_STATIC_LIBS ON)
     set(USE_BLOSC TRUE)
 endif ()
 
-find_package(OpenVDB 5.0 COMPONENTS openvdb)
+#find_package(OpenVDB 5.0 COMPONENTS openvdb)
 if(OpenVDB_FOUND)
-    slic3r_remap_configs(IlmBase::Half RelWithDebInfo Release)
-    slic3r_remap_configs(Blosc::blosc RelWithDebInfo Release)
+    #slic3r_remap_configs(IlmBase::Half RelWithDebInfo Release)
+   # slic3r_remap_configs(Blosc::blosc RelWithDebInfo Release)
 else ()
-    message(FATAL_ERROR "OpenVDB could not be found with the bundled find module. "
-                   "You can try to specify the find module location of your "
-                   "OpenVDB installation with the OPENVDB_FIND_MODULE_PATH cache variable.")
+   # message(FATAL_ERROR "OpenVDB could not be found with the bundled find module. "
+   #                "You can try to specify the find module location of your "
+   #                "OpenVDB installation with the OPENVDB_FIND_MODULE_PATH cache variable.")
 endif ()
 
 find_path(SPNAV_INCLUDE_DIR spnav.h)
@@ -901,7 +1019,9 @@ add_subdirectory(deps_src)
 add_subdirectory(src)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT OrcaSlicer_app_gui)
 
-add_dependencies(gettext_make_pot hintsToPot)
+if (TARGET hintsToPot)
+    add_dependencies(gettext_make_pot hintsToPot)
+endif()
 
 if(SLIC3R_BUILD_SANDBOXES)
     add_subdirectory(sandboxes)

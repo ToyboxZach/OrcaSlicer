@@ -9,7 +9,32 @@ add_subdirectory(dev-utils)
 # add_subdirectory(avrdude)
 # Note: semver and hints are now included from deps_src/CMakeLists.txt
 
-find_package(libnoise REQUIRED)
+if (EMSCRIPTEN)
+    set(LIBNOISE_INCLUDE_DIR "${CMAKE_PREFIX_PATH}/include")
+    set(LIBNOISE_LIBRARIES "${CMAKE_PREFIX_PATH}/lib/liblibnoise_static.a")
+    set(libnoise_LIB_FOUND TRUE)
+    if (NOT TARGET noise::noise)
+        if (EXISTS "${LIBNOISE_LIBRARIES}")
+            add_library(noise::noise STATIC IMPORTED)
+            set_target_properties(noise::noise PROPERTIES
+                IMPORTED_LOCATION "${LIBNOISE_LIBRARIES}"
+                INTERFACE_INCLUDE_DIRECTORIES "${LIBNOISE_INCLUDE_DIR}"
+            )
+        else ()
+            add_library(noise::noise INTERFACE IMPORTED)
+            set_target_properties(noise::noise PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${LIBNOISE_INCLUDE_DIR}"
+            )
+        endif ()
+    endif ()
+    if (EXISTS "${LIBNOISE_LIBRARIES}")
+        message(STATUS "WASM libnoise: includes=${LIBNOISE_INCLUDE_DIR}, libs=${LIBNOISE_LIBRARIES}")
+    else ()
+        message(STATUS "WASM libnoise: includes=${LIBNOISE_INCLUDE_DIR}, libs=(header-only)")
+    endif ()
+else ()
+    find_package(libnoise REQUIRED)
+endif ()
 
 add_subdirectory(libslic3r)
 
@@ -98,7 +123,7 @@ if(ORCA_TOOLS)
     else()
         add_executable(OrcaSlicer_profile_validator dev-utils/OrcaSlicer_profile_validator.cpp)
     endif()
-    target_link_libraries(OrcaSlicer_profile_validator libslic3r boost_headeronly libcurl OpenSSL::SSL OpenSSL::Crypto)
+    target_link_libraries(OrcaSlicer_profile_validator libslic3r boost_headeronly)
     target_compile_definitions(OrcaSlicer_profile_validator PRIVATE -DBOOST_ALL_NO_LIB -DBOOST_USE_WINAPI_VERSION=0x602 -DBOOST_SYSTEM_USE_UTF8)
 endif()
 
@@ -137,7 +162,10 @@ elseif (MSVC)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MANIFEST:NO")
 else ()
     # Boost on Raspberry-Pi does not link to pthreads explicitly.
-    target_link_libraries(OrcaSlicer ${CMAKE_DL_LIBS} -lstdc++ Threads::Threads pangoft2-1.0)
+    # pangoft2-1.0 is not available under Emscripten/WASM.
+    if (NOT EMSCRIPTEN)
+        target_link_libraries(OrcaSlicer ${CMAKE_DL_LIBS} -lstdc++ Threads::Threads pangoft2-1.0)
+    endif ()
 endif ()
 
 # Add the Slic3r GUI library, libcurl, OpenGL and GLU libraries.

@@ -1,13 +1,19 @@
 #include "FaceDetector.hpp"
 #include "TriangleMesh.hpp"
-#include "SLA/IndexedMesh.hpp"
 #include "Model.hpp"
 #include <unordered_set>
+
+#if !defined(SLIC3R_HEADLESS)
+#include "SLA/IndexedMesh.hpp"
+#endif
 
 namespace Slic3r {
 static const double BBOX_OFFSET = 2.0;
 void FaceDetector::detect_exterior_face()
 {
+#if defined(SLIC3R_HEADLESS)
+    return;
+#else
     struct MeshFacetRange {
         MeshFacetRange(TriangleMesh* tm, uint32_t facet_begin, uint32_t facet_end) :
             tm(tm), facet_begin(facet_begin), facet_end(facet_end) {}
@@ -82,9 +88,9 @@ void FaceDetector::detect_exterior_face()
                 break;
             }
         }
-
         tm->its.get_property(vol_facet_idx).type = EnumFaceTypes::eExteriorAppearance;
     }
+#endif
 }
 
 }

@@ -6,17 +6,17 @@ include(PrecompiledHeader)
 if(NOT DEFINED ORCA_CHECK_GCODE_PLACEHOLDERS)
     set(ORCA_CHECK_GCODE_PLACEHOLDERS "0")
 endif()
+message("!!! CONFIGURE VERSION!!!")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libslic3r_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/libslic3r_version.h @ONLY)
-
 if (MINGW)
     add_compile_options(-Wa,-mbig-obj)
 endif ()
 
 set(OpenVDBUtils_SOURCES "")
-if (TARGET OpenVDB::openvdb)
-    set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp)
-endif()
+#if (TARGET OpenVDB::openvdb)
+  #  set(OpenVDBUtils_SOURCES OpenVDBUtils.cpp OpenVDBUtils.hpp)
+#endif()
 
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 
@@ -183,8 +183,6 @@ set(lisbslic3r_sources
     Format/3mf.hpp
     Format/AMF.cpp
     Format/AMF.hpp
-    Format/DRC.cpp
-    Format/DRC.hpp
     Format/bbs_3mf.cpp
     Format/bbs_3mf.hpp
     format.hpp
@@ -194,12 +192,13 @@ set(lisbslic3r_sources
     Format/objparser.hpp
     Format/SL1.cpp
     Format/SL1.hpp
-    Format/STEP.cpp
-    Format/STEP.hpp
+   # Format/STEP.cpp
+  #  Format/STEP.hpp
     Format/STL.cpp
     Format/STL.hpp
     Format/svg.cpp
     Format/svg.hpp
+
     Format/ZipperArchiveImport.cpp
     Format/ZipperArchiveImport.hpp
     GCode/AdaptivePAInterpolator.cpp
@@ -457,6 +456,8 @@ set(lisbslic3r_sources
     TriangleSelector.hpp
     TriangleSetSampling.cpp
     TriangleSetSampling.hpp
+    Triangulation.cpp
+    Triangulation.hpp
     TriangulateWall.cpp
     TriangulateWall.hpp
     utils.cpp
@@ -475,6 +476,64 @@ set(lisbslic3r_sources
     FlushVolPredictor.cpp
 )
 
+# Headless builds exclude SLA/resin features and heavy dependencies (PNG, TextShape, VoronoiCGAL)
+if (SLIC3R_HEADLESS)
+    list(REMOVE_ITEM lisbslic3r_sources
+        Geometry/VoronoiUtilsCgal.cpp
+        Geometry/VoronoiUtilsCgal.hpp
+        ObjColorUtils.cpp
+        ObjColorUtils.hpp
+        PNGReadWrite.cpp
+        PNGReadWrite.hpp
+        Format/SL1.cpp
+        Format/SL1.hpp
+        Shape/TextShape.cpp
+        Shape/TextShape.hpp
+        SLA/Clustering.cpp
+        SLA/Clustering.hpp
+        SLA/ConcaveHull.cpp
+        SLA/ConcaveHull.hpp
+        SLA/Hollowing.cpp
+        SLA/Hollowing.hpp
+        SLA/IndexedMesh.cpp
+        SLA/IndexedMesh.hpp
+        SLA/Pad.cpp
+        SLA/Pad.hpp
+        SLAPrint.cpp
+        SLAPrint.hpp
+        SLAPrintSteps.cpp
+        SLAPrintSteps.hpp
+        SLA/RasterBase.cpp
+        SLA/RasterBase.hpp
+        SLA/RasterToPolygons.cpp
+        SLA/RasterToPolygons.hpp
+        SLA/Rotfinder.cpp
+        SLA/Rotfinder.hpp
+        SLA/SpatIndex.cpp
+        SLA/SpatIndex.hpp
+        SLA/SupportPointGenerator.cpp
+        SLA/SupportPointGenerator.hpp
+        SLA/SupportTreeBuilder.cpp
+        SLA/SupportTreeBuilder.hpp
+        SLA/SupportTreeBuildsteps.cpp
+        SLA/SupportTreeBuildsteps.hpp
+        SLA/SupportTree.cpp
+        SLA/SupportTree.hpp
+        SLA/SupportTreeMesher.cpp
+        SLA/SupportTreeMesher.hpp
+        ../slic3r/Utils/ColorSpaceConvert.hpp
+
+    )
+    list(APPEND lisbslic3r_sources
+        Format/svg.cpp
+        Format/svg.hpp
+        IntersectionPoints.cpp
+        IntersectionPoints.hpp
+        MeshBoolean.cpp
+        MeshBoolean.hpp
+    )
+endif ()
+
 if (APPLE)
     list(APPEND lisbslic3r_sources
             MacUtils.mm
@@ -488,6 +547,14 @@ add_library(libslic3r STATIC ${lisbslic3r_sources}
     ${OpenVDBUtils_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${lisbslic3r_sources})
 
+if (SLIC3R_HEADLESS)
+    target_sources(libslic3r PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../slic3r/GUI/PartPlate.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../slic3r/GUI/PartPlate.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../slic3r/Utils/ColorSpaceConvert.cpp
+    )
+endif ()
+
 if (SLIC3R_STATIC)
     set(CGAL_Boost_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
 endif ()
@@ -495,54 +562,158 @@ set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE ON CACHE BOOL "" FORCE)
 
 cmake_policy(PUSH)
 cmake_policy(SET CMP0011 NEW)
-find_package(CGAL REQUIRED)
-find_package(OpenCV REQUIRED core)
+#set(CMAKE_FIND_DEBUG_MODE TRUE)
+
+if (EMSCRIPTEN)
+    set(CGAL_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+    set(CGAL_FOUND TRUE)
+    if (NOT TARGET CGAL::CGAL)
+        add_library(CGAL::CGAL INTERFACE IMPORTED)
+        set_target_properties(CGAL::CGAL PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${CGAL_INCLUDE_DIRS}"
+        )
+    endif ()
+    message(STATUS "WASM CGAL: includes=${CGAL_INCLUDE_DIRS}, libs=(header-only)")
+else ()
+    if (NOT SLIC3R_HEADLESS)
+        set(CGAL_INCLUDE_DIRS "${CMAKE_PREFIX_PATH}/include")
+        set(CGAL_FOUND TRUE)
+        if (NOT TARGET CGAL::CGAL)
+            add_library(CGAL::CGAL INTERFACE IMPORTED)
+            set_target_properties(CGAL::CGAL PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${CGAL_INCLUDE_DIRS}"
+            )
+        endif ()
+        message(STATUS "WASM CGAL: includes=${CGAL_INCLUDE_DIRS}, libs=(header-only)")
+    else ()
+        find_package(CGAL REQUIRED)
+    endif ()
+endif ()
+#find_package(OpenCV REQUIRED core)
 cmake_policy(POP)
 
-add_library(libslic3r_cgal STATIC 
-    CutSurface.hpp CutSurface.cpp
-    IntersectionPoints.hpp IntersectionPoints.cpp
-    MeshBoolean.hpp MeshBoolean.cpp
-    TryCatchSignal.hpp TryCatchSignal.cpp
-    Triangulation.hpp Triangulation.cpp
-)
-target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
-# Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
-# (-frounding-math) still propagate to dependent libs which is not desired.
-get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)
-if (NOT TARGET ${_cgal_tgt})
-    set (_cgal_tgt CGAL::CGAL)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    add_library(libslic3r_cgal STATIC 
+        CutSurface.hpp CutSurface.cpp
+        IntersectionPoints.hpp IntersectionPoints.cpp
+        MeshBoolean.hpp MeshBoolean.cpp
+        TryCatchSignal.hpp TryCatchSignal.cpp
+        Triangulation.hpp Triangulation.cpp
+    )
+    target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 endif ()
-get_target_property(_opts ${_cgal_tgt} INTERFACE_COMPILE_OPTIONS)
-if (_opts)
-    set(_opts_bad "${_opts}")
-    set(_opts_good "${_opts}")
-    list(FILTER _opts_bad INCLUDE REGEX frounding-math)
-    list(FILTER _opts_good EXCLUDE REGEX frounding-math)
-    set_target_properties(${_cgal_tgt} PROPERTIES INTERFACE_COMPILE_OPTIONS "${_opts_good}")
-    target_compile_options(libslic3r_cgal PRIVATE "${_opts_bad}")
-endif()
 
-target_link_libraries(libslic3r_cgal PRIVATE ${_cgal_tgt} eigen admesh libigl mcut boost_libs)
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    # Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
+    # (-frounding-math) still propagate to dependent libs which is not desired.
+    get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)
+    if (NOT TARGET ${_cgal_tgt})
+        set (_cgal_tgt CGAL::CGAL)
+    endif ()
+    get_target_property(_opts ${_cgal_tgt} INTERFACE_COMPILE_OPTIONS)
+    if (_opts)
+        set(_opts_bad "${_opts}")
+        set(_opts_good "${_opts}")
+        list(FILTER _opts_bad INCLUDE REGEX frounding-math)
+        list(FILTER _opts_good EXCLUDE REGEX frounding-math)
+        set_target_properties(${_cgal_tgt} PROPERTIES INTERFACE_COMPILE_OPTIONS "${_opts_good}")
+        target_compile_options(libslic3r_cgal PRIVATE "${_opts_bad}")
+    endif()
+
+    target_link_libraries(libslic3r_cgal PRIVATE ${_cgal_tgt} eigen admesh libigl mcut boost_libs)
+endif ()
 
 if (MSVC AND "${CMAKE_SIZEOF_VOID_P}" STREQUAL "4") # 32 bit MSVC workaround
     target_compile_definitions(libslic3r_cgal PRIVATE CGAL_DO_NOT_USE_MPZF)
 endif ()
 
-encoding_check(libslic3r)
+set(_libslic3r_cgal_lib "")
+if (TARGET libslic3r_cgal)
+    set(_libslic3r_cgal_lib libslic3r_cgal)
+endif ()
+
+#encoding_check(libslic3r)
 
 target_compile_definitions(libslic3r PUBLIC -DUSE_TBB -DTBB_USE_CAPTURED_EXCEPTION=0)
 target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
 
+set(_expat_libs "")
+if (TARGET EXPAT::EXPAT)
+    list(APPEND _expat_libs EXPAT::EXPAT)
+elseif (TARGET expat)
+    list(APPEND _expat_libs expat)
+elseif (EXPAT_LIBRARIES)
+    list(APPEND _expat_libs ${EXPAT_LIBRARIES})
+endif ()
+
+set(_nlopt_libs "")
+if (TARGET NLopt::nlopt)
+    list(APPEND _nlopt_libs NLopt::nlopt)
+elseif (TARGET nlopt)
+    list(APPEND _nlopt_libs nlopt)
+elseif (NLOPT_LIBRARIES)
+    list(APPEND _nlopt_libs ${NLOPT_LIBRARIES})
+elseif (NLopt_LIBRARIES)
+    list(APPEND _nlopt_libs ${NLopt_LIBRARIES})
+endif ()
+if (_nlopt_libs)
+    if (NLOPT_INCLUDE_DIRS)
+        target_include_directories(libslic3r SYSTEM PUBLIC ${NLOPT_INCLUDE_DIRS})
+    elseif (NLopt_INCLUDE_DIR)
+        target_include_directories(libslic3r SYSTEM PUBLIC ${NLopt_INCLUDE_DIR})
+    endif ()
+endif ()
+
+set(_gmp_libs "")
+if (EMSCRIPTEN)
+    # Emscripten cross-compile: find_library doesn't work, use absolute paths
+    set(GMP_LIB_DIR "${CMAKE_PREFIX_PATH}/lib")
+    if (EXISTS "${GMP_LIB_DIR}/libmpfr.a")
+        list(APPEND _gmp_libs "${GMP_LIB_DIR}/libmpfr.a")
+        message(STATUS "Found MPFR (EMSCRIPTEN): ${GMP_LIB_DIR}/libmpfr.a")
+    endif()
+    if (EXISTS "${GMP_LIB_DIR}/libgmpxx.a")
+        list(APPEND _gmp_libs "${GMP_LIB_DIR}/libgmpxx.a")
+        message(STATUS "Found GMPXX (EMSCRIPTEN): ${GMP_LIB_DIR}/libgmpxx.a")
+    endif()
+    if (EXISTS "${GMP_LIB_DIR}/libgmp.a")
+        list(APPEND _gmp_libs "${GMP_LIB_DIR}/libgmp.a")
+        message(STATUS "Found GMP (EMSCRIPTEN): ${GMP_LIB_DIR}/libgmp.a")
+    endif()
+else()
+    find_library(MPFR_LIBRARY mpfr HINTS ${CMAKE_PREFIX_PATH} PATH_SUFFIXES lib)
+    if (MPFR_LIBRARY)
+        list(APPEND _gmp_libs ${MPFR_LIBRARY})
+        message(STATUS "Found MPFR: ${MPFR_LIBRARY}")
+    else()
+        message(WARNING "MPFR library not found")
+    endif ()
+    find_library(GMPXX_LIBRARY gmpxx HINTS ${CMAKE_PREFIX_PATH} PATH_SUFFIXES lib)
+    if (GMPXX_LIBRARY)
+        list(APPEND _gmp_libs ${GMPXX_LIBRARY})
+        message(STATUS "Found GMPXX: ${GMPXX_LIBRARY}")
+    else()
+        message(WARNING "GMPXX library not found")
+    endif ()
+    find_library(GMP_LIBRARY gmp HINTS ${CMAKE_PREFIX_PATH} PATH_SUFFIXES lib)
+    if (GMP_LIBRARY)
+        list(APPEND _gmp_libs ${GMP_LIBRARY})
+        message(STATUS "Found GMP: ${GMP_LIBRARY}")
+    else()
+        message(WARNING "GMP library not found")
+    endif ()
+endif()
+message(STATUS "_gmp_libs = ${_gmp_libs}")
+
 # Find the OCCT and related libraries
 set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
-find_package(OpenCASCADE REQUIRED)
-target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
-
-find_package(JPEG REQUIRED)
-find_package(draco REQUIRED)
+if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    find_package(OpenCASCADE REQUIRED)
+    target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
+    find_package(JPEG REQUIRED)
+    find_package(draco REQUIRED)
+endif()
 
 set(OCCT_LIBS
     TKXDESTEP
@@ -573,42 +744,63 @@ set(OCCT_LIBS
     TKernel
 )
 
+# opencv_world is only available on non-WASM builds (dep_OpenCV is excluded from the WASM dep list)
+if (TARGET opencv_world)
+    target_link_libraries(libslic3r PUBLIC opencv_world)
+endif()
+
 target_link_libraries(libslic3r
     PUBLIC
         admesh
         libigl
         libnest2d
         miniz
-        opencv_world
     PRIVATE
         ${CMAKE_DL_LIBS}
-        ${EXPAT_LIBRARIES}
-        ${OCCT_LIBS}
+        ${_expat_libs}
+        ${_nlopt_libs}
+        ${_gmp_libs}
         boost_libs
         cereal::cereal
         clipper
         Clipper2
-        draco::draco
         eigen
         glu-libtess
-        JPEG::JPEG
-        libslic3r_cgal
+        ${_libslic3r_cgal_lib}
         mcut
         noise::noise
-        PNG::PNG
         qhull
         qoi
         semver
         TBB::tbb
         TBB::tbbmalloc
         ZLIB::ZLIB
+    )
+if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    target_link_libraries(libslic3r PRIVATE
+        opencv_world
+        ${OCCT_LIBS}
+        draco::draco
+        JPEG::JPEG
+    )
+endif()
+
+if(NOT EMSCRIPTEN)
+    target_link_libraries(libslic3r PRIVATE
+        PNG::PNG
         OpenSSL::Crypto
     )
+endif()
+
+if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+    target_link_libraries(libslic3r PRIVATE libslic3r_cgal)
+endif ()
 
 if(NOT WIN32)
-    # Link freetype for OCCT dependency (CAD operations need font rendering)
+    # Link freetype for text/font rendering
     target_link_libraries(libslic3r PRIVATE ${FREETYPE_LIBRARIES})
-    if (NOT APPLE)
+    # fontconfig is a native Linux system library; not available under WASM/Emscripten
+    if (NOT APPLE AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
         target_link_libraries(libslic3r PRIVATE fontconfig)
     endif()
 endif()

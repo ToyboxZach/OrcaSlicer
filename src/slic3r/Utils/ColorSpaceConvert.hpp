@@ -19,8 +19,11 @@ void RGB2HSV(float r, float g, float b, float* h, float* s, float* v);
 float DeltaE00(float l1, float a1, float b1, float l2, float a2, float b2);
 float DeltaE94(float l1, float a1, float b1, float l2, float a2, float b2);
 float DeltaE76(float l1, float a1, float b1, float l2, float a2, float b2);
+#if !defined(SLIC3R_HEADLESS)
 
 class wxColour;
 std::string color_to_string(const wxColour &color);
 wxColour    string_to_wxColor(const std::string &str);
+#endif /* !defined(SLIC3R_HEADLESS) */
+
 #endif /* slic3r_Utils_ColorSpaceConvert_hpp_ */

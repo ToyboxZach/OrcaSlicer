@@ -1,3 +1,6 @@
+#if defined(SLIC3R_HEADLESS)
+#define NANOSVG_IMPLEMENTATION
+#endif
 #include "NSVGUtils.hpp"
 #include <array>
 #include <charconv> // to_chars

@@ -1,0 +1,152 @@
+FROM emscripten/emsdk:5.0.1
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /src
+
+# Recommended builds (override flags with --build-arg as needed):
+#
+# Default:
+#   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:locked-5.0.1 .
+#
+# Debug-leaning (more diagnostics):
+#   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:debug \
+#     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DSAFE_HEAP=1 -sASSERTIONS=2" \
+#     --build-arg EMSCRIPT_C_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions" .
+#
+# Smaller/faster runtime-leaning:
+#   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:opt \
+#     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DNDEBUG" \
+#     --build-arg EMSCRIPT_LINKERFLAGS="-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency -sPTHREAD_POOL_SIZE_STRICT=2 -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -sEXPORT_NAME=importPrusaEngine -sENVIRONMENT=worker -sEXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -sNO_EXIT_RUNTIME=1 -sINVOKE_RUN=0 -sINITIAL_MEMORY=512Mb -sMAXIMUM_MEMORY=1Gb" .
+
+
+# Install build helpers (cmake, ninja, ccache) and autotools for MPFR/GMP builds
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        cmake ninja-build ccache build-essential python3-pip git pkg-config \
+        libdbus-1-dev autoconf automake libtool zlib1g-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Use ccache for reproducible-ish builds and speed
+ENV CC="ccache emcc" CXX="ccache em++" CCACHE_DIR="/ccache" CCACHE_MAXSIZE="5G"
+
+# Copy repository
+
+COPY deps/ /src/deps/
+
+# Tunable WASM flags (can be overridden at docker build time with --build-arg)
+ARG DEP_EMSCRIPT_CXX_FLAGS_RELEASE="-pthread -fwasm-exceptions -matomics -mbulk-memory"
+ARG DEP_EMSCRIPT_C_FLAGS_RELEASE="-pthread -fwasm-exceptions -matomics -mbulk-memory"
+ARG DEPS_CACHE_BUSTER="wasm-deps-v3"
+# Configure and build all dependencies in cached layers
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    echo \"DEPS_CACHE_BUSTER=${DEPS_CACHE_BUSTER}\" && \
+    mkdir -p deps/build_wasm && \
+    cd deps/build_wasm && \
+        emcmake cmake .. \
+            -DDESTDIR=/src/deps/build_wasm/OrcaSlicer_dep \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDEP_EMSCRIPT_CXX_FLAGS_RELEASE=\"${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}\" \
+            -DDEP_EMSCRIPT_C_FLAGS_RELEASE=\"${DEP_EMSCRIPT_C_FLAGS_RELEASE}\""
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_Boost --parallel 4"
+# DONT USE parallel option in other makes, it cause build issues.
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_GMP -- -j1 VERBOSE=1"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_MPFR -- -j1 VERBOSE=1"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_CGAL -- -j1 VERBOSE=1"
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_TBB dep_Cereal dep_NLopt dep_libnoise -- -j1 "
+
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target dep_Qhull -- -j1 "
+
+# Catch-all: build any remaining optional deps (ZLIB, FREETYPE, EXPAT, etc.)
+RUN --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cd deps/build_wasm && \
+    emmake cmake --build . --config Release --target deps  -- -j1"
+
+
+ARG EMSCRIPT_LINKERFLAGS="-sEXPORT_NAME=OrcaSlicer \
+    -sEXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\",\"ccall\"] \
+    -sEXPORTED_FUNCTIONS=[\"_main\",\"_emscripten_force_exit\"] \
+    -sINVOKE_RUN=0 \
+    -sEXIT_RUNTIME=1 \
+    -sENVIRONMENT=worker \
+    -sMODULARIZE=1 \
+    -sEXPORT_ES6=1 \
+    -sSINGLE_FILE=0 \
+    -sFORCE_FILESYSTEM=1 \
+    -sALLOW_MEMORY_GROWTH=1 \
+    -sMAXIMUM_MEMORY=2GB \
+    -sINITIAL_MEMORY=128MB \
+    -sSTACK_SIZE=1MB \
+    -sUSE_PTHREADS=1 \
+    -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency \
+    -sPTHREAD_POOL_SIZE_STRICT=0 \
+    -sSHARED_MEMORY=1 \
+    -sMALLOC=mimalloc \
+    -sWASMFS=1 \
+    -sASSERTIONS=1"
+    
+ARG EMSCRIPT_C_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions"
+ARG EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1"
+
+# Build OrcaSlicer with bind-mounted source (no COPY of full repo)
+# Explicitly point to /src/deps (built in earlier layers) since CMake auto-derives from source dir
+RUN --mount=type=bind,source=.,target=/work,rw \
+    --mount=type=cache,target=/build_wasm \
+    --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    emcmake cmake -S /work -B /build_wasm -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+      -DSLIC3R_GUI=OFF \
+      -DSLIC3R_DESKTOP_INTEGRATION=OFF \
+      -DSLIC3R_ENC_CHECK=OFF \
+      -DSLIC3R_STATIC=ON \
+      -DDEP_BUILD_DIR=/src/deps/build_wasm \
+      -DCMAKE_PREFIX_PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local \
+      -DBoost_ROOT=/src/deps/build_wasm/OrcaSlicer_dep/usr/local \
+      -DBOOST_INCLUDEDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/include \
+    -DBOOST_LIBRARYDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib \
+    -DEMSCRIPT_CXX_FLAGS=\"${EMSCRIPT_CXX_FLAGS}\" \
+    -DEMSCRIPT_C_FLAGS=\"${EMSCRIPT_C_FLAGS}\" \
+    -DCMAKE_EXE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\" \
+    -DCMAKE_SHARED_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\" \
+    -DCMAKE_MODULE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\""
+
+RUN --mount=type=bind,source=.,target=/work,rw \
+    --mount=type=cache,target=/build_wasm \
+    --mount=type=cache,target=/ccache \
+    /bin/bash -lc "source /emsdk/emsdk_env.sh && \
+    cmake --build /build_wasm -- -j4"
+
+# Copy build artifacts from cache mount into final image filesystem
+RUN --mount=type=cache,target=/build_wasm \
+    mkdir -p /artifacts && \
+    cp /build_wasm/src/orca-slicer.js /artifacts/ && \
+    cp /build_wasm/src/orca-slicer.wasm /artifacts/ && \
+    ls -lh /artifacts/
+
+# Keep container interactive for debugging
+CMD ["/bin/bash"]

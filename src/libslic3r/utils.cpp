@@ -2,11 +2,47 @@
 #include "I18N.hpp"
 
 #include <atomic>
+#include <memory>
+#include <cstdlib>
 #include <locale>
 #include <ctime>
 #include <cstdarg>
 #include <stdio.h>
 #include <filesystem>
+#include <thread>
+#include <iostream>
+
+#ifdef __EMSCRIPTEN__
+	#include <emscripten/emscripten.h>
+	#include <emscripten/heap.h>
+	#include <emscripten/stack.h>
+
+EM_JS(int, js_orca_wasm_max_threads, (), {
+	const parsePositiveInt = (x) => {
+		if (x === undefined || x === null) return 0;
+		const n = Number(x);
+		return (Number.isFinite(n) && n > 0) ? (n | 0) : 0;
+	};
+
+	if (typeof globalThis !== 'undefined') {
+		let n = parsePositiveInt(globalThis.ORCA_WASM_MAX_THREADS);
+		if (n > 0) return n;
+
+		// In modularized worker builds, user config is often attached to Module.
+		n = parsePositiveInt(globalThis.Module && globalThis.Module.ORCA_WASM_MAX_THREADS);
+		if (n > 0) return n;
+	}
+
+	if (typeof Module !== 'undefined') {
+		const n = parsePositiveInt(Module.ORCA_WASM_MAX_THREADS);
+		if (n > 0) return n;
+	}
+
+	return 0;
+});
+
+
+#endif
 
 #include "format.hpp"
 #include "Platform.hpp"
@@ -48,6 +84,7 @@
 #include <boost/log/expressions.hpp>
 #include <boost/log/sinks/text_file_backend.hpp>
 #include <boost/log/utility/setup/file.hpp>
+#include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/sources/severity_logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
@@ -76,6 +113,7 @@
 #endif
 #ifdef TBB_HAS_GLOBAL_CONTROL
     #include <tbb/global_control.h>
+	#include <tbb/task_arena.h>
 #else
     #include <tbb/task_scheduler_init.h>
 #endif
@@ -159,7 +197,10 @@ unsigned get_logging_level()
     }
 }
 
+#if !defined(SLIC3R_HEADLESS)
+
 boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
+#endif
 
 // Force set_logging_level(<=error) after loading of the DLL.
 // This is currently only needed if libslic3r is loaded as a shared library into Perl interpreter
@@ -183,11 +224,72 @@ void disable_multi_threading()
 {
     // Disable parallelization so the Shiny profiler works
 #ifdef TBB_HAS_GLOBAL_CONTROL
-    tbb::global_control(tbb::global_control::max_allowed_parallelism, 1);
+	static std::unique_ptr<tbb::global_control> tbb_ctrl;
+	if (!tbb_ctrl)
+		tbb_ctrl = std::make_unique<tbb::global_control>(tbb::global_control::max_allowed_parallelism, 1);
 #else // TBB_HAS_GLOBAL_CONTROL
     static tbb::task_scheduler_init *tbb_init = new tbb::task_scheduler_init(1);
     UNUSED(tbb_init);
 #endif // TBB_HAS_GLOBAL_CONTROL
+}
+
+void cap_tbb_parallelism_for_wasm()
+{
+#if defined(__EMSCRIPTEN__)
+    size_t wasm_thread_cap = 16;
+	const char* cap_source = "default";
+
+	// Browser JS override (set globalThis.ORCA_WASM_MAX_THREADS before module init).
+	const int js_cap = js_orca_wasm_max_threads();
+	if (js_cap > 0) {
+		wasm_thread_cap = static_cast<size_t>(js_cap);
+		cap_source = "js";
+	}
+
+	// Optional environment override (useful in node/shell builds).
+    if (const char *env_cap = std::getenv("ORCA_WASM_MAX_THREADS")) {
+        try {
+            const unsigned long v = std::stoul(env_cap);
+			if (v > 0) {
+                wasm_thread_cap = static_cast<size_t>(v);
+				cap_source = "env";
+			}
+        } catch (...) {
+            // ignore invalid env value
+        }
+    }
+#if defined(TBB_HAS_GLOBAL_CONTROL)
+	static std::unique_ptr<tbb::global_control> wasm_tbb_ctrl;
+	if (wasm_tbb_ctrl)
+		return;
+
+	const size_t nthreads_hw = tbb::this_task_arena::max_concurrency();
+	constexpr size_t reserved_threads = 2;
+	size_t cap_threads = (nthreads_hw > reserved_threads) ? (nthreads_hw - reserved_threads) : 1;
+	if (cap_threads > wasm_thread_cap)
+		cap_threads = wasm_thread_cap;
+	wasm_tbb_ctrl = std::make_unique<tbb::global_control>(tbb::global_control::max_allowed_parallelism, cap_threads);
+	BOOST_LOG_TRIVIAL(info) << "cap_tbb_parallelism_for_wasm: max_allowed_parallelism=" << cap_threads
+							<< ", hardware_concurrency=" << nthreads_hw
+							<< ", wasm_thread_cap=" << wasm_thread_cap
+							<< ", cap_source=" << cap_source;
+#else
+	static tbb::task_scheduler_init *wasm_tbb_init = nullptr;
+	if (wasm_tbb_init)
+		return;
+
+	const size_t nthreads_hw = std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 1;
+	constexpr size_t reserved_threads = 2;
+	size_t cap_threads = (nthreads_hw > reserved_threads) ? (nthreads_hw - reserved_threads) : 1;
+	if (cap_threads > wasm_thread_cap)
+		cap_threads = wasm_thread_cap;
+	wasm_tbb_init = new tbb::task_scheduler_init(static_cast<int>(cap_threads));
+	BOOST_LOG_TRIVIAL(info) << "cap_tbb_parallelism_for_wasm: task_scheduler_init=" << cap_threads
+							<< ", hardware_concurrency=" << nthreads_hw
+							<< ", wasm_thread_cap=" << wasm_thread_cap
+							<< ", cap_source=" << cap_source;
+#endif
+#endif
 }
 
 static std::string g_var_dir;
@@ -349,6 +451,7 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 	}
 	auto full_path = (log_folder / file).make_preferred();
 
+	#if !defined(SLIC3R_HEADLESS)
 	g_log_sink = boost::log::add_file_log(
 		keywords::file_name = full_path.string() + ".%N",
 		keywords::rotation_size = 100 * 1024 * 1024,
@@ -359,9 +462,9 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 			<< expr::format_date_time< boost::posix_time::ptime >("TimeStamp", "%Y-%m-%d %H:%M:%S.%f")
 			<<"[Thread " << expr::attr<attrs::current_thread_id::value_type>("ThreadID") << "]"
 			<< ":" << expr::smessage
-		),
-		keywords::auto_flush = true
+		)
 	);
+	#endif
 
 	logging::add_common_attributes();
 
@@ -372,9 +475,10 @@ void set_log_path_and_level(const std::string& file, unsigned int level)
 
 void flush_logs()
 {
+#if !defined(SLIC3R_HEADLESS)
 	if (g_log_sink)
 		g_log_sink->flush();
-
+#endif
 	return;
 }
 
@@ -853,7 +957,7 @@ CopyFileResult copy_file_inner(const std::string& from, const std::string& to, s
 	// That may happen when copying on some exotic file system, for example Linux on Chrome.
 	copy_file_linux(source, target, ec);
 #else // __linux__
-	boost::filesystem::copy_file(source, target, boost::filesystem::copy_option::overwrite_if_exists, ec);
+	boost::filesystem::copy_file(source, target, boost::filesystem::copy_options::overwrite_existing, ec);
 #endif // __linux__
 	if (ec) {
 		error_message = ec.message();
@@ -1426,7 +1530,25 @@ std::string log_memory_info(bool ignore_loglevel)
 {
     std::string out;
     if (ignore_loglevel || logSeverity <= boost::log::trivial::info) {
-#ifdef WIN32
+#ifdef __EMSCRIPTEN__
+		const size_t heap_size = static_cast<size_t>(emscripten_get_heap_size());
+		const uintptr_t *sbrk_ptr = emscripten_get_sbrk_ptr();
+		const size_t dynamic_top = sbrk_ptr ? static_cast<size_t>(*sbrk_ptr) : 0;
+		const size_t free_heap = (heap_size > dynamic_top) ? (heap_size - dynamic_top) : 0;
+		const uintptr_t stack_base = emscripten_stack_get_base();
+		const uintptr_t stack_end = emscripten_stack_get_end();
+		const uintptr_t stack_current = emscripten_stack_get_current();
+		const size_t stack_total = (stack_base > stack_end) ? static_cast<size_t>(stack_base - stack_end) : 0;
+		const size_t stack_used = (stack_base > stack_current) ? static_cast<size_t>(stack_base - stack_current) : 0;
+		const size_t stack_free = (stack_total > stack_used) ? (stack_total - stack_used) : 0;
+
+		out += " WASM heap: " + format_memsize_MB(heap_size);
+		out += "; WASM dynamic top: " + format_memsize_MB(dynamic_top);
+		out += "; WASM free heap headroom: " + format_memsize_MB(free_heap);
+		out += "; WASM stack used: " + format_memsize(stack_used, 2);
+		out += "; WASM stack free: " + format_memsize(stack_free, 2);
+
+#elif defined(WIN32)
     #ifndef PROCESS_MEMORY_COUNTERS_EX
         // MingW32 doesn't have this struct in psapi.h
         typedef struct _PROCESS_MEMORY_COUNTERS_EX {
@@ -1577,8 +1699,11 @@ bool makedir(const std::string path) {
 
 bool bbl_calc_md5(std::string &filename, std::string &md5_out)
 {
+	
     unsigned char digest[16];
-    MD5_CTX       ctx;
+#if !defined(SLIC3R_HEADLESS)
+
+	MD5_CTX       ctx;
     MD5_Init(&ctx);
     boost::nowide::ifstream ifs(filename, std::ios::binary);
     std::string                 buf(64 * 1024, 0);
@@ -1590,6 +1715,7 @@ bool bbl_calc_md5(std::string &filename, std::string &md5_out)
         MD5_Update(&ctx, (unsigned char *) buf.data(), read_bytes);
     }
     MD5_Final(digest, &ctx);
+#endif
     char md5_str[33];
     for (int j = 0; j < 16; j++) { sprintf(&md5_str[j * 2], "%02X", (unsigned int) digest[j]); }
     md5_out = std::string(md5_str);
