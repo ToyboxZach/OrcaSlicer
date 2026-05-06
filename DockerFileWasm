@@ -97,11 +97,11 @@ ARG EMSCRIPT_LINKERFLAGS="-sEXPORT_NAME=OrcaSlicer \
     -sSINGLE_FILE=0 \
     -sFORCE_FILESYSTEM=1 \
     -sALLOW_MEMORY_GROWTH=1 \
-    -sMAXIMUM_MEMORY=2GB \
+    -sMAXIMUM_MEMORY=4GB \
     -sINITIAL_MEMORY=128MB \
     -sSTACK_SIZE=1MB \
     -sUSE_PTHREADS=1 \
-    -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency \
+    -sPTHREAD_POOL_SIZE='globalThis.ORCA_WASM_MAX_THREADS || navigator.hardwareConcurrency || 4' \
     -sPTHREAD_POOL_SIZE_STRICT=0 \
     -sSHARED_MEMORY=1 \
     -sMALLOC=mimalloc \
