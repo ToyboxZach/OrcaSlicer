@@ -1925,6 +1925,50 @@ bool Print::has_support_material() const
     return false;
 }
 
+static bool skirt_loop_is_printable(const Polygon &loop, const Polygon &printable_area, const Polygons &avoid_areas)
+{
+    if (loop.points.size() < 3 || printable_area.points.size() < 3)
+        return false;
+
+    for (const Point &point : loop.points)
+        if (!printable_area.contains(point))
+            return false;
+
+    Polyline loop_polyline = loop.split_at_first_point();
+    return avoid_areas.empty() || intersection_pl(Polylines{ loop_polyline }, avoid_areas).empty();
+}
+
+static bool make_printable_skirt_loop(
+    Polygon       &loop,
+    const Polygon &convex_hull,
+    const Polygon &printable_area,
+    const Polygons &avoid_areas,
+    const float    distance,
+    const float    bed_inset)
+{
+    // Prefer the normal skirt around the global print footprint. If that would leave the printer or cross a model,
+    // Don't add the skirt a
+    Polygons loops = offset(convex_hull, distance, ClipperLib::jtRound, float(scale_(0.1)));
+    Geometry::simplify_polygons(loops, scale_(0.05), &loops);
+    for (Polygon &candidate : loops) {
+        if (skirt_loop_is_printable(candidate, printable_area, avoid_areas)) {
+            loop = std::move(candidate);
+            return true;
+        }
+    }
+
+    Polygons bed_loops = offset(printable_area, -bed_inset, ClipperLib::jtRound, float(scale_(0.1)));
+    Geometry::simplify_polygons(bed_loops, scale_(0.05), &bed_loops);
+    for (Polygon &candidate : bed_loops) {
+        if (skirt_loop_is_printable(candidate, printable_area, avoid_areas)) {
+            loop = std::move(candidate);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /*  This method assigns extruders to the volumes having a material
     but not having extruders set in the volume config. */
 void Print::auto_assign_extruders(ModelObject* model_object) const
@@ -2608,20 +2652,22 @@ void Print::_make_skirt()
     // Loop while we have less skirts than required or any extruder hasn't reached the min length if any.
     std::vector<coordf_t> extruded_length(extruders.size(), 0.);
     if (m_config.skirt_type == stCombined) {
+        Polygon printable_area = get_bed_shape_with_excluded_area(m_config);
+        printable_area.translate(Point(scale_(m_origin.x()), scale_(m_origin.y())));
+        Polygons skirt_avoid_areas = this->first_layer_islands();
+        if (!m_first_layer_convex_hull.empty())
+            skirt_avoid_areas.push_back(m_first_layer_convex_hull);
+
         for (size_t i = m_config.skirt_loops, extruder_idx = 0; i > 0; -- i) {
             this->throw_if_canceled();
             // Offset the skirt outside.
             distance += float(scale_(spacing));
             // Generate the skirt centerline.
             Polygon loop;
-            {
-                // BBS. skirt_distance is defined as the gap between skirt and outer most brim, so no need to add max_brim_width
-                Polygons loops = offset(convex_hull, distance, ClipperLib::jtRound, float(scale_(0.1)));
-                Geometry::simplify_polygons(loops, scale_(0.05), &loops);
-			    if (loops.empty())
-				    break;
-			    loop = loops.front();
-            }
+            // BBS. skirt_distance is defined as the gap between skirt and outer most brim, so no need to add max_brim_width.
+            // If this global contour would leave the printable area, use an inset printer-border loop instead.
+            if (!make_printable_skirt_loop(loop, convex_hull, printable_area, skirt_avoid_areas, distance, float(scale_(spacing * i))))
+                break;
             // Extrude the skirt loop.
             ExtrusionLoop eloop(elrSkirt);
             eloop.paths.emplace_back(ExtrusionPath(
