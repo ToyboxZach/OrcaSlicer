@@ -1473,6 +1473,7 @@ private:
     // Belt mode: shift the purge prism's layer grid to match the printed
     // objects' grid so toolchange layers find prism layers to purge into.
     void                _align_belt_purge_layers();
+    void                deduplicate_support_layers();  // Remove overlapping supports across objects
     void                finalize_first_layer_convex_hull();
     void                update_filament_self_index_cache();
     // Deduplicates, per filament, the (extruder type x volume type) variants the grouping
