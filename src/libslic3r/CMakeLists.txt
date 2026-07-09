@@ -355,6 +355,7 @@ set(lisbslic3r_sources
     PrintConfig.hpp
     Print.cpp
     Print.hpp
+    PrintSupportDedup.cpp
     PrintObject.cpp
     PrintObjectSlice.cpp
     PrintRegion.cpp
