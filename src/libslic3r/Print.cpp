@@ -2254,8 +2254,18 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     }
 
     // Deduplicate overlapping supports across objects to avoid double extrusion
-    if (m_config.enable_support && m_objects.size() > 1)
-        this->deduplicate_support_layers();
+    // Only run if multiple objects exist and at least one has support
+    if (m_objects.size() > 1) {
+        bool has_any_support = false;
+        for (PrintObject* obj : m_objects) {
+            if (!obj->support_layers().empty()) {
+                has_any_support = true;
+                break;
+            }
+        }
+        if (has_any_support)
+            this->deduplicate_support_layers();
+    }
 
     for (PrintObject *obj : m_objects)
     {
@@ -2975,7 +2985,7 @@ void Print::deduplicate_support_layers()
                 // Clear and rebuild extrusion paths with trimmed polygons
                 support_layer->support_fills.clear();
                 for (const Polygon& poly : trimmed) {
-                    ExtrusionLoop loop(elrSupportMaterial);
+                    ExtrusionLoop loop(erSupportMaterial);
                     loop.paths.emplace_back(ExtrusionPath(erSupportMaterial, 0.f, 0.f, 0.f));
                     loop.paths.back().polyline = poly.split_at_first_point();
                     support_layer->support_fills.append(loop);
