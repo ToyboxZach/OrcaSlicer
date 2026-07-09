@@ -928,6 +928,31 @@ void make_brim(const Print& print, PrintTryCancel try_cancel, Polygons& islands_
     for (size_t iia = 0; iia < islands_area.size(); ++iia)
         islands_area[iia].translate(plate_shift);
 
+    // Prevent brim overlap: subtract other objects' brim areas from each object's brim.
+    // This ensures that when multiple objects are printed together, their brims don't overlap,
+    // avoiding double extrusion and potential adhesion issues.
+    // Both standard brims and support brims are processed.
+    for (auto& [objID, objBrimArea] : brimAreaMap) {
+        ExPolygons subtracted = objBrimArea;
+        // Subtract all other objects' brim areas
+        for (const auto& [otherObjID, otherBrimArea] : brimAreaMap) {
+            if (otherObjID != objID) {
+                subtracted = diff_ex(subtracted, otherBrimArea);
+            }
+        }
+        objBrimArea = subtracted;
+    }
+    for (auto& [objID, objSupportBrimArea] : supportBrimAreaMap) {
+        ExPolygons subtracted = objSupportBrimArea;
+        // Subtract all other objects' support brim areas
+        for (const auto& [otherObjID, otherSupportBrimArea] : supportBrimAreaMap) {
+            if (otherObjID != objID) {
+                subtracted = diff_ex(subtracted, otherSupportBrimArea);
+            }
+        }
+        objSupportBrimArea = subtracted;
+    }
+
     for (auto iter = brimAreaMap.begin(); iter != brimAreaMap.end(); ++iter) {
         if (!iter->second.empty()) {
             brimMap.insert(std::make_pair(iter->first, makeBrimInfill(iter->second, print, islands_area)));

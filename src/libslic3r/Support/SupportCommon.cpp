@@ -42,6 +42,72 @@ namespace Slic3r {
 //#define SUPPORT_SURFACES_OFFSET_PARAMETERS ClipperLib::jtMiter, 1.5
 #define SUPPORT_SURFACES_OFFSET_PARAMETERS ClipperLib::jtSquare, 0.
 
+bool support_material_consider_other_objects(const PrintObject &object)
+{
+    // By-object printing is sequential: a sibling object may not exist yet (or may already be finished) when this object's support is printed.
+    // Treating sibling objects as blockers there would incorrectly remove valid support. For by-layer printing, all objects share each layer,
+    // so their occupied volumes must be considered to avoid supports generated inside another object.
+    return object.print()->config().print_sequence != PrintSequence::ByObject && object.print()->objects().size() > 1;
+}
+
+void append_print_object_expolygons_relative_to(
+    ExPolygons &dst, const PrintObject &reference_object, const PrintObject &source_object, const ExPolygons &expolygons)
+{
+    if (expolygons.empty())
+        return;
+
+    if (&reference_object == &source_object) {
+        expolygons_append(dst, expolygons);
+        return;
+    }
+
+    if (reference_object.instances().empty() || source_object.instances().empty())
+        return;
+
+    // Layer polygons are stored in each PrintObject's local coordinates and later shifted per instance during G-code generation.
+    // To use another object's slices as a blocker for reference_object, translate every source instance by the relative plate shift:
+    //     source local + source_instance.shift - reference_instance.shift == reference local.
+    // Pitfall: this intentionally expands by all instance pairs. That is correct for copies, but may be costly for many duplicated objects.
+    // Memory/time impact is O(input polygons * reference instances * source instances) before later union/diff simplification
+    // can reduce it.
+    dst.reserve(dst.size() + expolygons.size() * reference_object.instances().size() * source_object.instances().size());
+    for (const PrintInstance &reference_instance : reference_object.instances())
+        for (const PrintInstance &source_instance : source_object.instances()) {
+            const size_t dst_idx = dst.size();
+            expolygons_append(dst, expolygons);
+            const Point shift = source_instance.shift - reference_instance.shift;
+            for (size_t i = dst_idx; i < dst.size(); ++i)
+                dst[i].translate(shift);
+        }
+}
+
+void append_print_object_polygons_relative_to(
+    Polygons &dst, const PrintObject &reference_object, const PrintObject &source_object, const Polygons &polygons)
+{
+    if (polygons.empty())
+        return;
+
+    if (&reference_object == &source_object) {
+        polygons_append(dst, polygons);
+        return;
+    }
+
+    if (reference_object.instances().empty() || source_object.instances().empty())
+        return;
+
+    // See append_print_object_expolygons_relative_to() for the coordinate-space rationale.
+    // Same cost model applies: duplicated copies increase temporary polygon count and downstream Clipper work.
+    dst.reserve(dst.size() + polygons.size() * reference_object.instances().size() * source_object.instances().size());
+    for (const PrintInstance &reference_instance : reference_object.instances())
+        for (const PrintInstance &source_instance : source_object.instances()) {
+            const size_t dst_idx = dst.size();
+            polygons_append(dst, polygons);
+            const Point shift = source_instance.shift - reference_instance.shift;
+            for (size_t i = dst_idx; i < dst.size(); ++i)
+                dst[i].translate(shift);
+        }
+}
+
 // Convert some of the intermediate layers into top/bottom interface layers as well as base interface layers.
 std::pair<SupportGeneratorLayersPtr, SupportGeneratorLayersPtr> generate_interface_layers(
     const PrintObjectConfig           &config,

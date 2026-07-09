@@ -42,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--root", default=".", help="Root directory to scan")
     args = parser.parse_args()
 
-    root_dir = normalize_root_dir(args.root)
+    root_dir = args.root.replace("\\ ", " ")
     json_files = index_json_files(root_dir)
     resolved = load_full_json(args.json_name, json_files)
 

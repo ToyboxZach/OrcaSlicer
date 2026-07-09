@@ -1121,6 +1121,7 @@ private:
 
     void                _make_skirt();
     void                _make_wipe_tower();
+    void                deduplicate_support_layers();  // Remove overlapping supports across objects
     void                finalize_first_layer_convex_hull();
 
     // Islands of objects and their supports extruded at the 1st layer.

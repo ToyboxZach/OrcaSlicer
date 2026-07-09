@@ -2253,6 +2253,10 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         }
     }
 
+    // Deduplicate overlapping supports across objects to avoid double extrusion
+    if (m_config.enable_support && m_objects.size() > 1)
+        this->deduplicate_support_layers();
+
     for (PrintObject *obj : m_objects)
     {
         if (need_slicing_objects.count(obj) == 0) {
@@ -2893,6 +2897,92 @@ std::vector<std::string> Print::get_incompatible_filaments_by_nozzle(const float
         }
     }
     return incompatible_filaments_list;
+}
+
+void Print::deduplicate_support_layers()
+{
+    // Prevent support layer overlap: remove redundant support regions when multiple objects
+    // have supports in the same XY area. This avoids double extrusion and adhesion issues.
+    // For each object, iterate through support layers and subtract overlapping supports from other objects.
+    
+    if (m_objects.size() <= 1)
+        return;  // No deduplication needed for single object
+
+    // Build a map of object ID to support layer map (print_z -> support polygons in world space)
+    std::map<ObjectID, std::map<coordf_t, Polygons>> object_support_maps;
+    for (PrintObject* obj : m_objects) {
+        if (obj->support_layers().empty())
+            continue;
+        
+        std::map<coordf_t, Polygons> support_map;
+        for (const SupportLayer* support_layer : obj->support_layers()) {
+            Polygons layer_polygons = support_layer->support_fills.polygons_covered_by_spacing();
+            // Translate support polygons to world space for comparison (using first instance shift)
+            if (!obj->instances().empty()) {
+                for (Polygon& poly : layer_polygons)
+                    poly.translate(obj->instances().front().shift);
+            }
+            if (!layer_polygons.empty())
+                support_map[support_layer->print_z] = layer_polygons;
+        }
+        object_support_maps[obj->id()] = support_map;
+    }
+
+    // For each object, trim its support by other objects' supports at overlapping Z levels
+    for (PrintObject* obj : m_objects) {
+        if (obj->support_layers().empty())
+            continue;
+
+        for (size_t layer_idx = 0; layer_idx < obj->support_layers().size(); ++layer_idx) {
+            SupportLayer* support_layer = obj->support_layers()[layer_idx];
+            coordf_t print_z = support_layer->print_z;
+            Polygons layer_polygons = support_layer->support_fills.polygons_covered_by_spacing();
+            
+            if (layer_polygons.empty())
+                continue;
+
+            // Translate this object's support to world space
+            Polygons world_space_polys = layer_polygons;
+            if (!obj->instances().empty()) {
+                for (Polygon& poly : world_space_polys)
+                    poly.translate(obj->instances().front().shift);
+            }
+
+            Polygons trimmed = world_space_polys;
+            // Subtract all other objects' support at this Z level
+            for (PrintObject* other_obj : m_objects) {
+                if (other_obj->id() == obj->id())
+                    continue;
+                if (object_support_maps.find(other_obj->id()) == object_support_maps.end())
+                    continue;
+                
+                const auto& other_support_map = object_support_maps[other_obj->id()];
+                auto it = other_support_map.find(print_z);
+                if (it != other_support_map.end() && !it->second.empty()) {
+                    // Subtract other object's support polygons from this layer
+                    trimmed = diff(trimmed, it->second);
+                }
+            }
+
+            // Translate trimmed polygons back to object-local coordinates
+            if (!obj->instances().empty()) {
+                for (Polygon& poly : trimmed)
+                    poly.translate(-obj->instances().front().shift);
+            }
+
+            // Update support layer with trimmed polygons if changed
+            if (trimmed.size() != layer_polygons.size() || !std::equal(trimmed.begin(), trimmed.end(), layer_polygons.begin())) {
+                // Clear and rebuild extrusion paths with trimmed polygons
+                support_layer->support_fills.clear();
+                for (const Polygon& poly : trimmed) {
+                    ExtrusionLoop loop(elrSupportMaterial);
+                    loop.paths.emplace_back(ExtrusionPath(erSupportMaterial, 0.f, 0.f, 0.f));
+                    loop.paths.back().polyline = poly.split_at_first_point();
+                    support_layer->support_fills.append(loop);
+                }
+            }
+        }
+    }
 }
 
 void Print::finalize_first_layer_convex_hull()

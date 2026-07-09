@@ -7,6 +7,7 @@
 // CuraEngine is released under the terms of the AGPLv3 or higher.
 
 #include "TreeModelVolumes.hpp"
+#include "SupportCommon.hpp"
 #include "TreeSupportCommon.hpp"
 
 #include "../BuildVolume.hpp"
@@ -109,10 +110,41 @@ TreeModelVolumes::TreeModelVolumes(
         size_t num_raft_layers = m_raft_layers.size();
         size_t num_layers = print_object.layer_count() + num_raft_layers;
         outlines.assign(num_layers, Polygons{});
+        // Organic supports use TreeModelVolumes for collision, avoidance and placeable-on-model areas.
+        // Add sibling object slices to these volumes in by-layer mode so organic branches do not pass through another object.
+        // This deliberately affects only the model-volume masks; overhang sampling remains driven by the support-owning object.
+        // Processing impact: larger model-volume outlines make organic precalculation and collision queries heavier.
+        // Memory impact: collision/avoidance/placeable caches may retain larger per-layer polygon sets for the duration of
+        // organic generation.
+        const bool consider_other_objects = support_material_consider_other_objects(print_object);
         tbb::parallel_for(tbb::blocked_range<size_t>(num_raft_layers, num_layers, std::min<size_t>(1, std::max<size_t>(16, num_layers / (8 * tbb::this_task_arena::max_concurrency())))),
             [&](const tbb::blocked_range<size_t> &range) {
-            for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx)
-                outlines[layer_idx] = polygons_simplify(to_polygons(print_object.get_layer(layer_idx - num_raft_layers)->lslices), mesh_settings.resolution, polygons_strictly_simple);
+            for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx) {
+                const Layer *layer = print_object.get_layer(layer_idx - num_raft_layers);
+                ExPolygons layer_slices = layer->lslices;
+                if (consider_other_objects) {
+                    // Convert sibling outlines to print_object-local coordinates before simplification.
+                    // Keep the Z-overlap test here as organic support layer indices may include raft layers while object layers do not.
+                    // Simplification happens after append so duplicate-heavy scenes still allocate temporary unsimplified sibling outlines.
+                    for (const PrintObject *other_object : print_object.print()->objects()) {
+                        if (other_object == &print_object || other_object->layers().empty())
+                            continue;
+
+                        const coordf_t z_threshold = layer->bottom_z() - EPSILON;
+                        size_t idx_other_layer = Layer::idx_higher_or_equal(
+                            other_object->layers().begin(), other_object->layers().end(), size_t(-1),
+                            [z_threshold](const Layer *layer){ return layer->print_z >= z_threshold; });
+                        for (; idx_other_layer < other_object->layers().size(); ++idx_other_layer) {
+                            const Layer *other_layer = other_object->layers()[idx_other_layer];
+                            if (other_layer->bottom_z() > layer->print_z + EPSILON)
+                                break;
+
+                            append_print_object_expolygons_relative_to(layer_slices, print_object, *other_object, other_layer->lslices);
+                        }
+                    }
+                }
+                outlines[layer_idx] = polygons_simplify(to_polygons(layer_slices), mesh_settings.resolution, polygons_strictly_simple);
+            }
         });
     }
 #endif

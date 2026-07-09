@@ -9,8 +9,8 @@ WORKDIR /src
 #
 # Debug-leaning (more diagnostics):
 #   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:debug \
-#     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DSAFE_HEAP=1 -sASSERTIONS=2" \
-#     --build-arg EMSCRIPT_C_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions" .
+#     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -ferror-limit=0 -fexceptions -DSAFE_HEAP=1 -sASSERTIONS=2" \
+#     --build-arg EMSCRIPT_C_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -ferror-limit=0 -fexceptions" .
 #
 # Smaller/faster runtime-leaning:
 #   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:opt \
@@ -110,6 +110,9 @@ ARG EMSCRIPT_LINKERFLAGS="-sEXPORT_NAME=OrcaSlicer \
     
 ARG EMSCRIPT_C_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions"
 ARG EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions -DSAFE_HEAP=1"
+
+# NOTE: Removed -DBOOST_LOG_NO_THREADS from both flags because boost libraries are built WITH threading support
+# and passing this flag causes symbol mismatches during linking. Wasm supports pthreads, so threading is fine.
 
 # Build OrcaSlicer with bind-mounted source (no COPY of full repo)
 # Explicitly point to /src/deps (built in earlier layers) since CMake auto-derives from source dir

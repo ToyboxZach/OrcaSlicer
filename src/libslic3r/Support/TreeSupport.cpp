@@ -3394,6 +3394,11 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
     branch_scale_factor = tan(object.config().tree_support_branch_angle.value * M_PI / 180.);
     clear_nodes();
     m_max_move_distances.resize(object.layers().size(), 0);
+    // Tree support pathing uses m_layer_outlines / m_layer_outlines_below as collision and routing guides.
+    // Include sibling object slices here so tree branches avoid and can reason about objects that share the same by-layer print.
+    // Memory/time impact: the outline cache grows by overlapping sibling contours, then collision/avoidance cache generation
+    // works on larger unions.
+    const bool consider_other_objects = support_material_consider_other_objects(object);
     for (std::size_t layer_nr  = 0; layer_nr < object.layers().size(); ++layer_nr)
     {
         const Layer* layer = object.get_layer(layer_nr);
@@ -3402,6 +3407,32 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
         ExPolygons& outline = m_layer_outlines.back();
         for (const ExPolygon& poly : layer->lslices) {
             poly.simplify(scale_(m_radius_sample_resolution), &outline);
+        }
+        if (consider_other_objects) {
+            // Store all outlines in this object's local coordinates. This mirrors classic support trimming and avoids changing
+            // downstream tree algorithms, which assume their caches are already local to the support-owning object.
+            // Pitfall: over-inclusive outlines can reduce branch routing freedom, so limit additions to sibling layers whose Z span overlaps.
+            // This is paid during tree cache setup rather than per support extrusion path; duplicated instances still multiply
+            // outline size.
+            for (const PrintObject *other_object : object.print()->objects()) {
+                if (other_object == &object || other_object->layers().empty())
+                    continue;
+
+                const coordf_t z_threshold = layer->bottom_z() - EPSILON;
+                size_t idx_other_layer = Layer::idx_higher_or_equal(
+                    other_object->layers().begin(), other_object->layers().end(), size_t(-1),
+                    [z_threshold](const Layer *layer){ return layer->print_z >= z_threshold; });
+                for (; idx_other_layer < other_object->layers().size(); ++idx_other_layer) {
+                    const Layer *other_layer = other_object->layers()[idx_other_layer];
+                    if (other_layer->bottom_z() > layer->print_z + EPSILON)
+                        break;
+
+                    ExPolygons other_slices;
+                    append_print_object_expolygons_relative_to(other_slices, object, *other_object, other_layer->lslices);
+                    for (const ExPolygon &poly : other_slices)
+                        poly.simplify(scale_(m_radius_sample_resolution), &outline);
+                }
+            }
         }
 
         if (layer_nr == 0)

@@ -3106,6 +3106,12 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
     const coordf_t       gap_xy) const
 {
     const float gap_xy_scaled = float(scale_(gap_xy));
+    // This function historically trimmed supports only against the object that owns the support.
+    // For by-layer multi-object prints that is not enough: sibling objects occupy the same plate layers and may be valid surfaces / blockers.
+    // The flag is false for by-object printing because those objects are printed sequentially and must not suppress each other's supports.
+    // Cost impact when enabled: each support layer scans Z-overlapping sibling layers and adds temporary offset polygons
+    // to the final diff().
+    const bool consider_other_objects = support_material_consider_other_objects(object);
 
     // Collect non-empty layers to be processed in parallel.
     // This is a good idea as pulling a thread from a thread pool for an empty task is expensive.
@@ -3122,7 +3128,7 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
     BOOST_LOG_TRIVIAL(debug) << "PrintObjectSupportMaterial::trim_support_layers_by_object() in parallel - start";
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, nonempty_layers.size()),
-        [this, &object, &nonempty_layers, gap_extra_above, gap_extra_below, gap_xy_scaled](const tbb::blocked_range<size_t>& range) {
+        [this, &object, &nonempty_layers, gap_extra_above, gap_extra_below, gap_xy_scaled, consider_other_objects](const tbb::blocked_range<size_t>& range) {
             size_t idx_object_layer_overlapping = size_t(-1);
 
             auto is_layers_overlap = [](const SupportGeneratorLayer& support_layer, const Layer& object_layer, coordf_t bridging_height = 0.f) -> bool {
@@ -3186,6 +3192,63 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
                         }
                         if (! some_region_overlaps)
                             break;
+                    }
+                }
+
+                if (consider_other_objects) {
+                    // Add sibling objects to the trimming mask. The support polygons are still in this object's local coordinates,
+                    // so every sibling slice is translated into this coordinate space before it is appended to polygons_trimming.
+                    // Only layers overlapping the support layer's Z span plus configured gaps are considered; otherwise tall neighbors
+                    // could accidentally erase supports that are safely above or below them.
+                    // Processing impact: offsetting sibling slices and diffing a larger polygons_trimming set is the main extra cost.
+                    // Memory impact is temporary and proportional to overlapping sibling contours times instance pairs.
+                    for (const PrintObject *other_object : object.print()->objects()) {
+                        if (other_object == &object || other_object->layers().empty())
+                            continue;
+
+                        size_t idx_other_layer_overlapping = Layer::idx_higher_or_equal(
+                            other_object->layers().begin(), other_object->layers().end(), size_t(-1),
+                            [z_threshold](const Layer *layer){ return layer->print_z >= z_threshold; });
+
+                        size_t j = idx_other_layer_overlapping;
+                        for (; j < other_object->layers().size(); ++j) {
+                            const Layer &other_layer = *other_object->layers()[j];
+                            if (other_layer.bottom_z() > support_layer.print_z + gap_extra_above - EPSILON)
+                                break;
+
+                            const bool is_overlap = is_layers_overlap(support_layer, other_layer);
+                            const coordf_t trimming_offset = is_overlap ? gap_xy_scaled : scale_(no_overlap_xy_gap);
+                            Polygons other_layer_trimming;
+                            for (const ExPolygon &expoly : other_layer.lslices)
+                                polygons_append(other_layer_trimming, offset({ expoly }, trimming_offset, SUPPORT_SURFACES_OFFSET_PARAMETERS));
+                            // Translate after offsetting, so the same local offset geometry can be reused for every instance pair.
+                            append_print_object_polygons_relative_to(polygons_trimming, object, *other_object, other_layer_trimming);
+                        }
+
+                        if (! m_slicing_params.soluble_interface && m_object_config->thick_bridges) {
+                            // Thick bridge regions extend below the nominal object layer. Include those sibling bridge masks as well,
+                            // matching the existing same-object trimming behavior above.
+                            for (; j < other_object->layers().size(); ++j) {
+                                const Layer &other_layer = *other_object->layers()[j];
+                                bool some_region_overlaps = false;
+                                for (LayerRegion *region : other_layer.regions()) {
+                                    coordf_t bridging_height = region->region().bridging_height_avg(*m_print_config);
+                                    if (other_layer.print_z - bridging_height > support_layer.print_z + gap_extra_above - EPSILON)
+                                        break;
+                                    some_region_overlaps = true;
+
+                                    bool is_overlap = is_layers_overlap(support_layer, other_layer, bridging_height);
+                                    coordf_t trimming_offset = is_overlap ? gap_xy_scaled : scale_(no_overlap_xy_gap);
+                                    Polygons other_bridge_trimming = offset(region->fill_surfaces.filter_by_type(stBottomBridge), trimming_offset, SUPPORT_SURFACES_OFFSET_PARAMETERS);
+                                    if (region->region().config().detect_overhang_wall.value)
+                                        // Add bridging perimeters.
+                                        SupportMaterialInternal::collect_bridging_perimeter_areas(region->perimeters, gap_xy_scaled, other_bridge_trimming);
+                                    append_print_object_polygons_relative_to(polygons_trimming, object, *other_object, other_bridge_trimming);
+                                }
+                                if (! some_region_overlaps)
+                                    break;
+                            }
+                        }
                     }
                 }
 

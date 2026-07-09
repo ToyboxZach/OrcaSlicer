@@ -46,6 +46,21 @@ void tree_supports_generate_paths(ExtrusionEntitiesPtr &dst, const Polygons &pol
 void fill_expolygons_with_sheath_generate_paths(
     ExtrusionEntitiesPtr &dst, const Polygons &polygons, Fill *filler, float density, ExtrusionRole role, const Flow &flow, const SupportParameters& support_params, bool with_sheath, bool no_sort);
 
+// Support generation is performed per PrintObject in that object's local coordinate system.
+// In by-layer printing, however, all objects occupy the plate at the same time and supports must not be routed through sibling objects.
+// These helpers expose that cross-object occupancy while preserving the local-coordinate contract expected by support generators.
+bool support_material_consider_other_objects(const PrintObject &object);
+
+// Append source_object geometry translated into reference_object's local support coordinates.
+// This accounts for all instance pairs, so the result is suitable for support collision / trimming masks of the reference object.
+// Caveat: the helper intentionally does not rotate or reslice anything; PrintObjects are already split by transform during slicing.
+void append_print_object_expolygons_relative_to(
+    ExPolygons &dst, const PrintObject &reference_object, const PrintObject &source_object, const ExPolygons &expolygons);
+
+// Polygon variant of append_print_object_expolygons_relative_to(), used after offsetting or flattening expolygons.
+void append_print_object_polygons_relative_to(
+    Polygons &dst, const PrintObject &reference_object, const PrintObject &source_object, const Polygons &polygons);
+
 // returns sorted layers
 SupportGeneratorLayersPtr generate_support_layers(
 	PrintObject							&object,
