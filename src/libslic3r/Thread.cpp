@@ -12,6 +12,7 @@
 #include <thread>
 #include <tbb/parallel_for.h>
 #include <tbb/task_arena.h>
+#include <tbb/task_scheduler_observer.h>
 
 #include "Thread.hpp"
 #include "Utils.hpp"
@@ -235,23 +236,32 @@ void name_tbb_thread_pool_threads_set_locale()
 
 	cap_tbb_parallelism_for_wasm();
 
+#ifdef __EMSCRIPTEN__
+	// On wasm, thread naming is a no-op and the barrier below would deadlock against
+	// a strict Emscripten pthread pool: TBB needs to pthread_create worker threads from
+	// that pool to satisfy the rendezvous, but with PTHREAD_POOL_SIZE_STRICT=2 any
+	// creation beyond the pool size returns EAGAIN instead of blocking, so the barrier
+	// condition (all nthreads in-flight simultaneously) is never met.
+	// Use a task_scheduler_observer to set the "C" locale lazily on each worker thread
+	// the first time it enters the TBB arena, then return early.
+	{
+		class LocaleObserver : public tbb::task_scheduler_observer {
+		public:
+			LocaleObserver() { observe(true); }
+			void on_scheduler_entry(bool /*is_worker*/) override {
+				uselocale(newlocale(LC_ALL, "C", nullptr));
+			}
+		};
+		static LocaleObserver observer;
+	}
+	return;
+#endif
 
 	// see GH issue #5661 PrusaSlicer hangs on Linux when run with non standard task affinity
 	// TBB will respect the task affinity mask on Linux and spawn less threads than std::thread::hardware_concurrency().
 //	const size_t nthreads_hw = std::thread::hardware_concurrency();
 	const size_t nthreads_hw = tbb::this_task_arena::max_concurrency();
 	size_t       nthreads    = nthreads_hw;
-
-#ifdef __EMSCRIPTEN__
-	// On WebAssembly pthread builds, the browser worker pool is finite and there may
-	// already be non-TBB worker activity in flight. Keep some headroom so this eager
-	// TBB fan-out does not exhaust the pool and deadlock.
-	constexpr size_t emscripten_reserved_threads = 2;
-	if (nthreads > emscripten_reserved_threads)
-		nthreads -= emscripten_reserved_threads;
-	else
-		nthreads = 1;
-#endif
 
 #ifdef SLIC3R_PROFILE
 	// Shiny profiler is not thread safe, thus disable parallelization.
