@@ -7,6 +7,7 @@
 #include "../MutablePolygon.hpp"
 #include "../Geometry.hpp"
 #include "../Point.hpp"
+#include "../PrintConfig.hpp"
 #include "clipper/clipper_z.hpp"
 
 #include <cmath>
@@ -48,6 +49,45 @@ bool support_material_consider_other_objects(const PrintObject &object)
     // Treating sibling objects as blockers there would incorrectly remove valid support. For by-layer printing, all objects share each layer,
     // so their occupied volumes must be considered to avoid supports generated inside another object.
     return object.print()->config().print_sequence != PrintSequence::ByObject && object.print()->objects().size() > 1;
+}
+
+static Polygons outside_print_area_ring(Polygon printable_area)
+{
+    if (printable_area.points.size() < 3)
+        return {};
+
+    BoundingBox bbox = get_extents(printable_area);
+    if (!bbox.defined)
+        return {};
+
+    // Keep the outer box finite and close to the machine. This is large enough for any support search/offset,
+    // while avoiding the int32 overflow risk of using a huge 1m offset on multi-plate coordinates.
+    const Point bbox_size = bbox.size();
+    bbox.offset(std::max(bbox_size.x(), bbox_size.y()) + scale_(100.));
+
+    Polygons blocker { bbox.polygon() };
+    printable_area.reverse();
+    blocker.emplace_back(std::move(printable_area));
+    return blocker;
+}
+
+Polygons support_material_print_area_blocker(const PrintObject &object)
+{
+    Polygon printable_area;
+    printable_area.points = get_bed_shape_with_excluded_area(object.print()->config()).points;
+    if (printable_area.points.size() < 3 || object.instances().empty())
+        return {};
+
+    const Vec3d plate_offset = object.print()->get_plate_origin();
+    printable_area.translate(Point(scale_(plate_offset.x()), scale_(plate_offset.y())));
+
+    Polygons blocker;
+    for (const PrintInstance &instance : object.instances()) {
+        Polygon printable_area_local = printable_area;
+        printable_area_local.translate(-instance.shift);
+        polygons_append(blocker, outside_print_area_ring(std::move(printable_area_local)));
+    }
+    return blocker;
 }
 
 void append_print_object_expolygons_relative_to(
@@ -437,6 +477,24 @@ SupportGeneratorLayersPtr generate_raft_base(
             //    trimming = offset(object.layers().front()->lslices, (float)scale_(object.config().brim_object_gap.value), SUPPORT_SURFACES_OFFSET_PARAMETERS);
             //else
                 trimming = offset(object.layers().front()->lslices, (float)scale_(support_params.gap_xy_first_layer), SUPPORT_SURFACES_OFFSET_PARAMETERS);
+
+            if (support_material_consider_other_objects(object)) {
+                // The first support layer is intentionally expanded like a support brim/flange for bed adhesion.
+                // Trim that expansion against sibling objects' first-layer footprints here, before support toolpaths are generated,
+                // so we don't print a support flange onto another object and don't need to repair finished extrusion paths later.
+                // Cost is limited to first-layer sibling outlines and only applies to multi-object by-layer prints.
+                for (const PrintObject *other_object : object.print()->objects()) {
+                    if (other_object == &object || other_object->layers().empty())
+                        continue;
+
+                    Polygons other_trimming = offset(
+                        other_object->layers().front()->lslices,
+                        (float) scale_(support_params.gap_xy_first_layer),
+                        SUPPORT_SURFACES_OFFSET_PARAMETERS);
+                    append_print_object_polygons_relative_to(trimming, object, *other_object, other_trimming);
+                }
+            }
+
             if (inflate_factor_1st_layer > SCALED_EPSILON) {
                 // Inflate in multiple steps to avoid leaking of the support 1st layer through object walls.
                 auto  nsteps = std::max(5, int(ceil(inflate_factor_1st_layer / support_params.first_layer_flow.scaled_width())));

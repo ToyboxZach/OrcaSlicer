@@ -51,6 +51,11 @@ void fill_expolygons_with_sheath_generate_paths(
 // These helpers expose that cross-object occupancy while preserving the local-coordinate contract expected by support generators.
 bool support_material_consider_other_objects(const PrintObject &object);
 
+// Build a print-object-local blocker representing the area outside the printable bed.
+// Support generators may add this to their normal collision/trim masks so supports avoid leaving the print area
+// during generation instead of being clipped after toolpaths are created.
+Polygons support_material_print_area_blocker(const PrintObject &object);
+
 // Append source_object geometry translated into reference_object's local support coordinates.
 // This accounts for all instance pairs, so the result is suitable for support collision / trimming masks of the reference object.
 // Caveat: the helper intentionally does not rotate or reslice anything; PrintObjects are already split by transform during slicing.

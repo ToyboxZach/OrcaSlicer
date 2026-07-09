@@ -3112,6 +3112,7 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
     // Cost impact when enabled: each support layer scans Z-overlapping sibling layers and adds temporary offset polygons
     // to the final diff().
     const bool consider_other_objects = support_material_consider_other_objects(object);
+    const Polygons print_area_blocker = support_material_print_area_blocker(object);
 
     // Collect non-empty layers to be processed in parallel.
     // This is a good idea as pulling a thread from a thread pool for an empty task is expensive.
@@ -3128,7 +3129,7 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
     BOOST_LOG_TRIVIAL(debug) << "PrintObjectSupportMaterial::trim_support_layers_by_object() in parallel - start";
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, nonempty_layers.size()),
-        [this, &object, &nonempty_layers, gap_extra_above, gap_extra_below, gap_xy_scaled, consider_other_objects](const tbb::blocked_range<size_t>& range) {
+        [this, &object, &nonempty_layers, &print_area_blocker, gap_extra_above, gap_extra_below, gap_xy_scaled, consider_other_objects](const tbb::blocked_range<size_t>& range) {
             size_t idx_object_layer_overlapping = size_t(-1);
 
             auto is_layers_overlap = [](const SupportGeneratorLayer& support_layer, const Layer& object_layer, coordf_t bridging_height = 0.f) -> bool {
@@ -3154,7 +3155,10 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
                     object.layers().begin(), object.layers().end(), idx_object_layer_overlapping,
                     [z_threshold](const Layer *layer){ return layer->print_z >= z_threshold; });
                 // Collect all the object layers intersecting with this layer.
-                Polygons polygons_trimming;
+                // Treat the outside of the printable area as a permanent blocker. This makes the support generator route and
+                // propagate within the printer boundary rather than creating support outside the bed and clipping it later.
+                // The blocker is object-local and finite; copying it per layer is cheaper than re-projecting it in each thread.
+                Polygons polygons_trimming = print_area_blocker;
                 size_t i = idx_object_layer_overlapping;
                 for (; i < object.layers().size(); ++ i) {
                     const Layer &object_layer = *object.layers()[i];

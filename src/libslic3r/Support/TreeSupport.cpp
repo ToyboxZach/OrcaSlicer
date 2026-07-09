@@ -1675,9 +1675,11 @@ void TreeSupport::generate()
     create_tree_support_layers();
     m_ts_data = m_object->alloc_tree_support_preview_cache();
     m_ts_data->is_slim = is_slim;
-    // // get the ring of outside plate
-    // auto tmp= diff_ex(offset_ex(m_machine_border, scale_(100)), m_machine_border);
-    // if (!tmp.empty()) m_ts_data->m_machine_border = tmp[0];
+    // Add a finite collision ring around the printable area before tree pathing starts. This nudges tree branches away from
+    // out-of-bed routes during generation instead of generating areas and clipping them to m_machine_border later.
+    auto tmp = diff_ex(offset_ex(m_machine_border, scale_(100.)), m_machine_border);
+    if (!tmp.empty())
+        m_ts_data->m_machine_border = tmp[0];
 
     std::vector<TreeSupport3D::SupportElements> move_bounds(m_highest_overhang_layer + 1);
     profiler.stage_start(STAGE_GENERATE_CONTACT_NODES);
@@ -3522,7 +3524,8 @@ const ExPolygons& TreeSupportData::calculate_collision(const RadiusLayerPair& ke
 
     ExPolygons collision_areas = offset_ex(m_layer_outlines[key.layer_nr], scale_(key.radius+m_xy_distance));
     collision_areas = expolygons_simplify(collision_areas, scale_(m_radius_sample_resolution));
-    // collision_areas.emplace_back(m_machine_border);
+    if (!m_machine_border.empty())
+        collision_areas.emplace_back(m_machine_border);
     const auto ret = m_collision_cache.insert({ key, std::move(collision_areas) });
     return ret.first->second;
 }

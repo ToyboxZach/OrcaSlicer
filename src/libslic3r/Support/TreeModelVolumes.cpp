@@ -36,20 +36,22 @@ using namespace std::literals;
 // had to use a define beacuse the macro processing inside macro BOOST_LOG_TRIVIAL()
 #define error_level_not_in_cache debug
 
-//FIXME Machine border is currently ignored.
 static Polygons calculateMachineBorderCollision(Polygon machine_border)
 {
-    // Put a border of 1m around the print volume so that we don't collide.
-#if 1
-    //FIXME just returning no border will let tree support legs collide with print bed boundary
-    return {};
-#else
-    //FIXME offsetting by 1000mm easily overflows int32_tr coordinate.
-    Polygons out = offset(machine_border, scaled<float>(1000.), jtMiter, 1.2);
-    machine_border.reverse(); // Makes the polygon negative so that we subtract the actual volume from the collision area.
+    if (machine_border.points.size() < 3)
+        return {};
+
+    BoundingBox bbox = get_extents(machine_border);
+    if (!bbox.defined)
+        return {};
+
+    const Point bbox_size = bbox.size();
+    bbox.offset(std::max(bbox_size.x(), bbox_size.y()) + scale_(100.));
+
+    Polygons out { bbox.polygon() };
+    machine_border.reverse(); // Makes the polygon negative so that the printable area is a hole in the collision area.
     out.emplace_back(std::move(machine_border));
     return out;
-#endif
 }
 
 TreeModelVolumes::TreeModelVolumes(

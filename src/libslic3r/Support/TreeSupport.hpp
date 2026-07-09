@@ -247,7 +247,7 @@ public:
     std::vector<LayerHeightData> layer_heights;
 
     std::vector<std::unique_ptr<SupportNode>> contact_nodes;
-    // ExPolygon                  m_machine_border;
+    ExPolygon                  m_machine_border;
 
 private:
     /*!
