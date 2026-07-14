@@ -6978,6 +6978,7 @@ void PartPlateList::delete_selected_plate()
 	delete_plate(m_current_plate);
 }
 
+#ifndef SLIC3R_HEADLESS
 
 bool PartPlateList::check_all_plate_local_bed_type(const std::vector<BedType> &cur_bed_types)
 {
@@ -7005,6 +7006,7 @@ bool PartPlateList::check_all_plate_local_bed_type(const std::vector<BedType> &c
     return is_ok;
 }
 
+#endif
 //get a plate pointer by index
 PartPlate* PartPlateList::get_plate(int index)
 {
@@ -9327,7 +9329,6 @@ void PartPlateList::refresh_imex_icons()
     for (PartPlate* plate : m_plate_list)
         plate->refresh_imex_icon();
 }
-#endif
 
 void PartPlateList::on_extruder_count_changed(int extruder_count)
 {
@@ -9336,6 +9337,8 @@ void PartPlateList::on_extruder_count_changed(int extruder_count)
     }
     BOOST_LOG_TRIVIAL(info) << boost::format("%1%: extruder_count=%2%")% __FUNCTION__ %extruder_count;
 }
+#endif
+
 
 void PartPlateList::set_filament_count(int filament_count)
 {
