@@ -272,7 +272,11 @@ public:
     void clear(bool clear_sliced_result = true);
 
     BedType get_bed_type(bool load_from_project = false) const;
+#ifndef SLIC3R_HEADLESS
+
     void set_bed_type(BedType bed_type);
+#endif
+
     void reset_bed_type();
 
     void reset_skirt_start_angle();
@@ -565,8 +569,11 @@ public:
     void update_first_layer_print_sequence_when_delete_filament(size_t filamen_id);
 
     void print() const;
+#ifndef SLIC3R_HEADLESS
 
     void on_extruder_count_changed(int extruder_count);
+#endif
+
     void set_filament_count(int filament_count);
     void on_filament_added();
     void on_filament_deleted(int filament_count, int filament_id);
@@ -789,7 +796,10 @@ public:
     //int delete_plate(PartPlate* plate);
     void delete_selected_plate();
 
+    #ifndef SLIC3R_HEADLESS
+
     bool check_all_plate_local_bed_type(const std::vector<BedType>& cur_bed_types);
+    #endif
     //get a plate pointer by index
     PartPlate* get_plate(int index);
 
@@ -989,9 +999,9 @@ public:
     void show_cali_texture(bool show = true);
     void init_cali_texture_info();
     void load_cali_textures();
-#endif
 
     void on_extruder_count_changed(int extruder_count);
+#endif
 
     void set_filament_count(int filament_count);
     void on_filament_deleted(int filament_count, int filament_id);

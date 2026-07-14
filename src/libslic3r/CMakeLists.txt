@@ -786,7 +786,7 @@ if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     )
 endif()
 
-if(NOT EMSCRIPTEN)
+if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
     target_link_libraries(libslic3r PRIVATE
         PNG::PNG
         OpenSSL::Crypto
