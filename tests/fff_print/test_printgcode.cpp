@@ -16,6 +16,8 @@
 #include "test_data.hpp"
 
 #include <algorithm>
+#include <boost/filesystem.hpp>
+#include <boost/nowide/cstdio.hpp>
 #include <boost/regex.hpp>
 
 using namespace Slic3r;
@@ -278,4 +280,25 @@ SCENARIO( "PrintGCode basic functionality", "[PrintGCode][.]") {
 			}
         }
     }
+}
+
+SCENARIO("G-code export low-memory mode", "[PrintGCode]") {
+    Slic3r::Print print;
+    Slic3r::Model model;
+    Slic3r::Test::init_print({ TestMesh::cube_20x20x20 }, print, model, {
+        { "layer_height", 0.2 },
+        { "first_layer_height", 0.2 }
+    });
+
+    boost::filesystem::path temp = boost::filesystem::unique_path();
+    GCodeProcessorResult preview_data;
+    print.set_status_silent();
+    print.process();
+    print.export_gcode(temp.string(), &preview_data, nullptr);
+
+    THEN("the export result does not retain toolpath moves") {
+        REQUIRE(preview_data.moves.empty());
+    }
+
+    boost::nowide::remove(temp.string().c_str());
 }

@@ -48,6 +48,7 @@ RUN apt-get update && \
         ccache \
         pkg-config \
         texinfo \
+        time \
         wget \
         zlib1g-dev && \
     # Try to install libwebkit2gtk (version may vary by distro)

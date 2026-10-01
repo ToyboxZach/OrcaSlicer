@@ -22,8 +22,19 @@
 #include <float.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
 #include <limits>
+#include <sstream>
+#include <thread>
 #include <unordered_set>
+#ifdef __linux__
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
 #include <boost/filesystem/path.hpp>
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
@@ -47,6 +58,116 @@ using namespace nlohmann;
 #define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
+
+namespace {
+
+#ifdef __linux__
+bool resource_profiling_enabled()
+{
+    static const bool enabled = [] {
+        const char* value = std::getenv("ORCA_PROFILE");
+        return value != nullptr && value[0] != '\0' && std::string(value) != "0";
+    }();
+    return enabled;
+}
+
+size_t current_resident_bytes()
+{
+    size_t total_pages = 0;
+    size_t resident_pages = 0;
+    std::ifstream statm("/proc/self/statm");
+    if (!(statm >> total_pages >> resident_pages))
+        return 0;
+    return resident_pages * static_cast<size_t>(sysconf(_SC_PAGE_SIZE));
+}
+
+double resource_usage_seconds(const timeval& value)
+{
+    return static_cast<double>(value.tv_sec) + static_cast<double>(value.tv_usec) / 1000000.0;
+}
+
+struct ProcessCpuUsage {
+    double user = 0.0;
+    double system = 0.0;
+};
+
+ProcessCpuUsage current_process_cpu_usage()
+{
+    rusage usage{};
+    if (getrusage(RUSAGE_SELF, &usage) != 0)
+        return {};
+    return { resource_usage_seconds(usage.ru_utime), resource_usage_seconds(usage.ru_stime) };
+}
+#endif
+
+class ScopedResourceProfiler
+{
+public:
+    explicit ScopedResourceProfiler(const char* phase)
+    {
+#ifdef __linux__
+        if (!resource_profiling_enabled())
+            return;
+
+        m_enabled = true;
+        m_phase = phase;
+        m_wall_start = std::chrono::steady_clock::now();
+        m_cpu_start = current_process_cpu_usage();
+        m_rss_start = current_resident_bytes();
+        m_rss_peak = m_rss_start;
+        m_sampler = std::thread([this] {
+            while (!m_stop.load(std::memory_order_relaxed)) {
+                m_rss_peak = std::max(m_rss_peak, current_resident_bytes());
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        });
+#else
+        (void)phase;
+#endif
+    }
+
+    ~ScopedResourceProfiler()
+    {
+#ifdef __linux__
+        if (!m_enabled)
+            return;
+
+        m_stop.store(true, std::memory_order_relaxed);
+        m_sampler.join();
+        const auto wall_end = std::chrono::steady_clock::now();
+        const ProcessCpuUsage cpu_end = current_process_cpu_usage();
+        const size_t rss_end = current_resident_bytes();
+        m_rss_peak = std::max(m_rss_peak, rss_end);
+        const double wall_seconds = std::chrono::duration<double>(wall_end - m_wall_start).count();
+
+        std::ostringstream report;
+        report << std::fixed << std::setprecision(3)
+               << "[ORCA_PROFILE] phase=" << m_phase
+               << " wall_s=" << wall_seconds
+               << " user_cpu_s=" << cpu_end.user - m_cpu_start.user
+               << " system_cpu_s=" << cpu_end.system - m_cpu_start.system
+               << std::setprecision(1)
+               << " rss_start_mb=" << static_cast<double>(m_rss_start) / (1024.0 * 1024.0)
+               << " rss_end_mb=" << static_cast<double>(rss_end) / (1024.0 * 1024.0)
+               << " rss_sampled_peak_mb=" << static_cast<double>(m_rss_peak) / (1024.0 * 1024.0);
+        BOOST_LOG_TRIVIAL(info) << report.str();
+#endif
+    }
+
+private:
+#ifdef __linux__
+    bool m_enabled = false;
+    std::string m_phase;
+    std::chrono::steady_clock::time_point m_wall_start;
+    ProcessCpuUsage m_cpu_start;
+    size_t m_rss_start = 0;
+    size_t m_rss_peak = 0;
+    std::atomic<bool> m_stop{false};
+    std::thread m_sampler;
+#endif
+};
+
+} // namespace
 
 template class PrintState<PrintStep, psCount>;
 template class PrintState<PrintObjectStep, posCount>;
@@ -2099,6 +2220,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": this=%1%, enter, use_cache=%2%, object size=%3%")%this%use_cache%m_objects.size();
     if (m_objects.empty())
         return;
+    
+    ScopedResourceProfiler process_profile("print_process");
 
     for (PrintObject *obj : m_objects)
         obj->clear_shared_object();
@@ -2210,6 +2333,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": total object counts %1% in current print, need to slice %2%")%m_objects.size()%need_slicing_objects.size();
     BOOST_LOG_TRIVIAL(info) << "Starting the slicing process." << log_memory_info();
     if (!use_cache) {
+        {
+        ScopedResourceProfiler phase_profile("slice_and_perimeters");
         for (PrintObject *obj : m_objects) {
             if (need_slicing_objects.count(obj) != 0) {
                 obj->make_perimeters();
@@ -2221,6 +2346,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     obj->set_done(posPerimeters);
             }
         }
+        }
+        {
+        ScopedResourceProfiler phase_profile("curled_extrusion_estimation");
         for (PrintObject *obj : m_objects) {
             if (need_slicing_objects.count(obj) != 0) {
                 obj->estimate_curled_extrusions();
@@ -2230,6 +2358,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     obj->set_done(posEstimateCurledExtrusions);
             }
         }
+        }
+        {
+        ScopedResourceProfiler phase_profile("infill_generation");
         for (PrintObject *obj : m_objects) {
             if (need_slicing_objects.count(obj) != 0) {
                 obj->infill();
@@ -2241,6 +2372,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     obj->set_done(posInfill);
             }
         }
+        }
+        {
+        ScopedResourceProfiler phase_profile("ironing");
         for (PrintObject *obj : m_objects) {
             if (need_slicing_objects.count(obj) != 0) {
                 obj->ironing();
@@ -2250,7 +2384,10 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     obj->set_done(posIroning);
             }
         }
+        }
 
+        {
+        ScopedResourceProfiler phase_profile("support_generation");
         tbb::parallel_for(tbb::blocked_range<int>(0, int(m_objects.size())),
             [this, need_slicing_objects](const tbb::blocked_range<int>& range) {
                 for (int i = range.begin(); i < range.end(); i++) {
@@ -2265,7 +2402,10 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 }
             }
         );
+        }
 
+        {
+        ScopedResourceProfiler phase_profile("overhang_lift_detection");
         for (PrintObject* obj : m_objects) {
             if (need_slicing_objects.count(obj) != 0) {
                 obj->detect_overhangs_for_lift();
@@ -2275,8 +2415,10 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     obj->set_done(posDetectOverhangsForLift);
             }
         }
+        }
     }
     else {
+        ScopedResourceProfiler phase_profile("cached_reslice");
         for (PrintObject *obj : m_objects) {
             if (re_slicing_objects.count(obj) == 0) {
                 if (obj->set_started(posSlice))
@@ -2309,9 +2451,13 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     // first-layer hulls see the final support footprint. By-object printing is sequential, so overlap ownership there
     // would be wrong; in by-layer mode the first object in print order keeps an overlapping support region and later
     // objects have only the duplicate path segments clipped away.
-    if (m_config.print_sequence != PrintSequence::ByObject && m_objects.size() > 1 && this->has_support_material())
+    if (m_config.print_sequence != PrintSequence::ByObject && m_objects.size() > 1 && this->has_support_material()) {
+        ScopedResourceProfiler phase_profile("support_layer_deduplication");
         this->deduplicate_support_layers();
+    }
 
+    {
+    ScopedResourceProfiler phase_profile("shared_layer_copy");
     for (PrintObject *obj : m_objects)
     {
         if (need_slicing_objects.count(obj) == 0) {
@@ -2319,9 +2465,11 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             obj->copy_layers_overhang_from_shared_object();
         }
     }
+    }
 
 
 
+    if (ScopedResourceProfiler phase_profile("wipe_tower_and_tool_ordering"); true) {
     if (this->set_started(psWipeTower)) {
         {
             std::vector<std::set<int>> geometric_unprintables(m_config.nozzle_diameter.size());
@@ -2351,14 +2499,15 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         }
         this->set_done(psWipeTower);
     }
+    }
 
     if (this->has_wipe_tower()) {
         m_fake_wipe_tower.set_pos({ m_config.wipe_tower_x.get_at(m_plate_index), m_config.wipe_tower_y.get_at(m_plate_index) });
     }
 
     if (this->set_started(psSkirtBrim)) {
+        ScopedResourceProfiler phase_profile("skirt_and_brim");
         this->set_status(70, L("Generating skirt & brim"));
-
         if (time_cost_with_cache)
             start_time = (long long)Slic3r::Utils::get_current_time_utc();
 
@@ -2481,6 +2630,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         }
     }
     //BBS
+    {
+    ScopedResourceProfiler phase_profile("extrusion_path_simplification");
     for (PrintObject *obj : m_objects) {
         if (((!use_cache)&&(need_slicing_objects.count(obj) != 0))
             || (use_cache &&(re_slicing_objects.count(obj) != 0))){
@@ -2495,6 +2646,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 obj->set_done(posSimplifySupportPath);
         }
     }
+    }
 
     // BBS
     bool has_adaptive_layer_height = false;
@@ -2504,6 +2656,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             break;
         }
     }
+    if (ScopedResourceProfiler phase_profile("gcode_path_conflict_check"); true) {
     if(!m_no_check /*&& !has_adaptive_layer_height*/)
     {
         using Clock                 = std::chrono::high_resolution_clock;
@@ -2522,6 +2675,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         if (conflictRes.has_value()) {
             BOOST_LOG_TRIVIAL(error) << boost::format("gcode path conflicts found between %1% and %2%")%conflictRes.value()._objName1 %conflictRes.value()._objName2;
         }
+    }
     }
 
     BOOST_LOG_TRIVIAL(info) << "Slicing process finished." << log_memory_info();
@@ -2551,10 +2705,13 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
     //BBS: compute plate offset for gcode-generator
     const Vec3d origin = this->get_plate_origin();
     gcode.set_gcode_offset(origin(0), origin(1));
+    ScopedResourceProfiler export_profile("gcode_export");
     gcode.do_export(this, path.c_str(), result, thumbnail_cb);
-    gcode.export_layer_filaments(result);
-    //BBS
-    result->conflict_result = m_conflict_result;
+    if (result != nullptr) {
+        gcode.export_layer_filaments(result);
+        //BBS
+        result->conflict_result = m_conflict_result;
+    }
     return path.c_str();
 }
 

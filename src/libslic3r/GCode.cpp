@@ -2158,7 +2158,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     BOOST_LOG_TRIVIAL(info) << "Exporting G-code finished" << log_memory_info();
     print->set_done(psGCodeExport);
     
-    if(is_BBL_Printer())
+    if (result != nullptr && is_BBL_Printer())
         result->label_object_enabled = m_enable_exclude_object;
     // Write the profiler measurements to file
     PROFILE_UPDATE();
@@ -2167,12 +2167,14 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
 // free functions called by GCode::_do_export()
 namespace DoExport {
-    static void init_gcode_processor(const PrintConfig& config, GCodeProcessor& processor, bool& silent_time_estimator_enabled)
+    static void init_gcode_processor(const PrintConfig& config, GCodeProcessor& processor, bool collect_preview_data, bool& silent_time_estimator_enabled)
     {
         silent_time_estimator_enabled = (config.gcode_flavor == gcfMarlinLegacy || config.gcode_flavor == gcfMarlinFirmware)
                                         && config.silent_mode;
         processor.reset();
-        processor.initialize_result_moves();
+        processor.set_collect_preview_data(collect_preview_data);
+        if (collect_preview_data)
+            processor.initialize_result_moves();
         processor.apply_config(config);
         processor.enable_stealth_time_estimator(silent_time_estimator_enabled);
     }
@@ -2398,7 +2400,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     m_timelapse_pos_picker.init(&print,m_writer.get_xy_offset().cast<coord_t>());
 
     // modifies m_silent_time_estimator_enabled
-    DoExport::init_gcode_processor(print.config(), m_processor, m_silent_time_estimator_enabled);
+    // Never retain toolpath-preview moves. Headless slicing still supplies a GCodeResult for
+    // validation, but does not need its memory-intensive preview geometry.
+    DoExport::init_gcode_processor(print.config(), m_processor, false, m_silent_time_estimator_enabled);
     const bool is_bbl_printers = print.is_BBL_printer();
     const WipeTowerType wipe_tower_type = print.wipe_tower_type();
     m_calib_config.clear();

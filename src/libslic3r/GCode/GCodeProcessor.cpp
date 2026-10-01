@@ -395,7 +395,8 @@ static void recalculate_trapezoids(std::vector<GCodeProcessor::TimeBlock>& block
     }
 }
 
-void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, size_t keep_last_n_blocks, float additional_time)
+void GCodeProcessor::TimeMachine::calculate_time(
+    GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, bool collect_preview_data, size_t keep_last_n_blocks, float additional_time)
 {
     if (!enabled || blocks.size() < 2)
         return;
@@ -422,7 +423,10 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             block_time += additional_time;
 
         time += double(block_time);
-        result.moves[block.move_id].time[static_cast<size_t>(mode)] = block_time;
+        // Low-memory export still accumulates total time, but has no MoveVertex in which to
+        // store per-move time. Actual-speed interpolation below is likewise unavailable.
+        if (collect_preview_data)
+            result.moves[block.move_id].time[static_cast<size_t>(mode)] = block_time;
         gcode_time.cache += block_time;
         //BBS
         if (block.flags.prepare_stage)
@@ -432,7 +436,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             first_layer_time += block_time;
 
         // detect actual speed moves required to render toolpaths using actual speed
-        if (mode == PrintEstimatedStatistics::ETimeMode::Normal) {
+        if (collect_preview_data && mode == PrintEstimatedStatistics::ETimeMode::Normal) {
             GCodeProcessorResult::MoveVertex& curr_move = result.moves[block.move_id];
             if (curr_move.type != EMoveType::Extrude &&
                 curr_move.type != EMoveType::Travel &&
@@ -1791,34 +1795,34 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     {
         Points pos;
         Points pos_custom;
-        float  max_print_z;
-        float  max_print_z_custom;
+        float  max_print_z{ 0.0f };
+        float  max_print_z_custom{ 0.0f };
     };
     std::map<int, std::map<int, GCodePosInfo>> gcode_path_pos; // object_id, filament_id, pos
-    for (const GCodeProcessorResult::MoveVertex &move : m_result.moves) {
-        // sometimes, the start line extrude was outside the edge of plate a little, this is allowed, so do not include into the gcode_path_pos
-        if (move.type == EMoveType::Extrude /* && move.extrusion_role != ExtrusionRole::erFlush || move.type == EMoveType::Travel*/)
-            if (move.extrusion_role == ExtrusionRole::erCustom) {
-                /*if (move.is_arc_move_with_interpolation_points()) {
-                    for (int i = 0; i < move.interpolation_points.size(); i++) {
-                        gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(move.interpolation_points[i].cast<double>()));
-                    }
-                } else {*/
-                    gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(move.position.cast<double>()));
-                //}
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom =
-                    std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom, move.print_z);
-            } else {
-                /*if (move.is_arc_move_with_interpolation_points()) {
-                    for (int i = 0; i < move.interpolation_points.size(); i++) {
-                        gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos.emplace_back(to_2d(move.interpolation_points[i].cast<double>()));
-                    }
-                } else {*/
-                    gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos.emplace_back(to_2d(move.position.cast<double>()));
-                //}
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z = std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z,
-                                                                                                   move.print_z);
-            }
+    auto collect_extrusion = [&gcode_path_pos, &to_2d](ExtrusionRole extrusion_role, unsigned char extruder_id, int object_label_id,
+                                                        const Vec3f &position, float print_z) {
+        GCodePosInfo &pos_info = gcode_path_pos[object_label_id][int(extruder_id)];
+        if (extrusion_role == ExtrusionRole::erCustom) {
+            pos_info.pos_custom.emplace_back(to_2d(position.cast<double>()));
+            pos_info.max_print_z_custom = std::max(pos_info.max_print_z_custom, print_z);
+        } else {
+            pos_info.pos.emplace_back(to_2d(position.cast<double>()));
+            pos_info.max_print_z = std::max(pos_info.max_print_z, print_z);
+        }
+    };
+
+    if (m_collect_preview_data) {
+        for (const GCodeProcessorResult::MoveVertex &move : m_result.moves)
+            if (move.type == EMoveType::Extrude)
+                collect_extrusion(move.extrusion_role, move.extruder_id, move.object_label_id, move.position, move.print_z);
+    } else {
+        // No preview vector exists in low-memory mode. Validation has only extrusion endpoints,
+        // role, extruder, object label, and print Z; it cannot inspect speed, width, flow,
+        // temperature, colour, or non-extrusion moves because those were intentionally dropped.
+        for (const ValidationMove &move : m_validation_moves)
+            collect_extrusion(move.extrusion_role, move.extruder_id, move.object_label_id, move.position, move.print_z);
+        m_validation_moves.clear();
+        m_validation_moves.shrink_to_fit();
     }
 
     bool valid = true;
@@ -2462,6 +2466,7 @@ void GCodeProcessor::reset()
     m_last_default_color_id = 0;
 
     m_options_z_corrector.reset();
+    m_validation_moves.clear();
 
     m_detect_layer_based_on_tag = false;
 
@@ -3193,7 +3198,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             store_move_vertex(EMoveType::Color_change);
             CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::ColorChange, filament_id + 1, color, "" };
             m_result.custom_gcode_per_print_z.emplace_back(item);
-            m_options_z_corrector.set();
+            if (m_collect_preview_data)
+                m_options_z_corrector.set();
             process_custom_gcode_time(CustomGCode::ColorChange);
             process_filaments(CustomGCode::ColorChange);
         }
@@ -3206,7 +3212,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         store_move_vertex(EMoveType::Pause_Print);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::PausePrint, get_filament_id() + 1, "", ""};
         m_result.custom_gcode_per_print_z.emplace_back(item);
-        m_options_z_corrector.set();
+        if (m_collect_preview_data)
+            m_options_z_corrector.set();
         process_custom_gcode_time(CustomGCode::PausePrint);
         return;
     }
@@ -3216,7 +3223,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         store_move_vertex(EMoveType::Custom_GCode);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::Custom, get_filament_id() + 1, "", ""};
         m_result.custom_gcode_per_print_z.emplace_back(item);
-        m_options_z_corrector.set();
+        if (m_collect_preview_data)
+            m_options_z_corrector.set();
         return;
     }
 
@@ -3826,7 +3834,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
         if (origin == G1DiscretizationOrigin::G1)
             m_extruded_last_z = m_end_position[Z];
-        m_options_z_corrector.update(m_height);
+        if (m_collect_preview_data)
+            m_options_z_corrector.update(m_height);
 
         if (m_forced_width > 0.0f)
             m_width = m_forced_width;
@@ -4089,7 +4098,9 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
     const Vec3f plate_offset = {(float) m_x_offset, (float) m_y_offset, 0.0f};
 
-    if (m_seams_detector.is_active()) {
+    // Seam markers contain preview-only toolpath information. They are unavailable in low-memory
+    // mode because it does not retain the preceding MoveVertex needed to reconstruct the seam.
+    if (m_collect_preview_data && m_seams_detector.is_active()) {
         // check for seam starting vertex
         if (type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
             //BBS: m_result.moves.back().position has plate offset, must minus plate offset before calculate the real seam position
@@ -4125,7 +4136,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             m_seams_detector.activate(false);
         }
     }
-    else if (type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
+    else if (m_collect_preview_data && type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
         m_seams_detector.activate(true);
         m_seams_detector.set_first_vertex(m_result.moves.back().position - m_extruder_offsets[filament_id] - plate_offset);
     }
@@ -5476,6 +5487,18 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_line_id + 1 :
         ((type == EMoveType::Seam) ? m_last_line_id : m_line_id);
 
+    const Vec3f position = Vec3f(m_end_position[X] + m_x_offset, m_end_position[Y] + m_y_offset,
+                                 m_processing_start_custom_gcode ? m_first_layer_height : m_end_position[Z] - m_z_offset) +
+                           m_extruder_offsets[filament_id];
+
+    if (!m_collect_preview_data) {
+        // The G-code preview is unavailable in this mode: discard every non-extrusion move and
+        // all rendering fields. Keep only the endpoint metadata required by boundary validation.
+        if (type == EMoveType::Extrude)
+            m_validation_moves.push_back({ position, m_extrusion_role, static_cast<unsigned char>(filament_id), m_object_label_id, m_print_z });
+        return;
+    }
+
     m_result.moves.push_back({
         m_last_line_id,
         type,
@@ -5483,7 +5506,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         static_cast<unsigned char>(filament_id),
         m_cp_color.current,
         //BBS: add plate's offset to the rendering vertices
-        Vec3f(m_end_position[X] + m_x_offset, m_end_position[Y] + m_y_offset, m_processing_start_custom_gcode ? m_first_layer_height : m_end_position[Z]- m_z_offset) + m_extruder_offsets[filament_id],
+        position,
         static_cast<float>(m_end_position[E] - m_start_position[E]),
         m_feedrate,
         0.0f, // actual feedrate
@@ -5746,8 +5769,8 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
     std::vector<TimeMachine::ActualSpeedMove> actual_speed_moves;
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
-        machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), keep_last_n_blocks, additional_time);
-        if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
+        machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_collect_preview_data, keep_last_n_blocks, additional_time);
+        if (m_collect_preview_data && static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
             actual_speed_moves = std::move(machine.actual_speed_moves);
     }
 

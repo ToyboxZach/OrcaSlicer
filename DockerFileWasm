@@ -14,8 +14,9 @@ WORKDIR /src
 #
 # Smaller/faster runtime-leaning:
 #   DOCKER_BUILDKIT=1 docker build --platform=linux/amd64 -f DockerFileWasm -t orcaslicer-wasm:opt \
-#     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -DBOOST_LOG_NO_THREADS -pthread -ferror-limit=0 -fexceptions -DNDEBUG" \
-#     --build-arg EMSCRIPT_LINKERFLAGS="-pthread -sMODULARIZE -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency -sPTHREAD_POOL_SIZE_STRICT=2 -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=emscripten_num_logical_cores -sEXPORT_NAME=importPrusaEngine -sENVIRONMENT=worker -sEXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -sNO_EXIT_RUNTIME=1 -sINVOKE_RUN=0 -sINITIAL_MEMORY=512Mb -sMAXIMUM_MEMORY=1Gb" .
+#     --build-arg EMSCRIPT_CXX_FLAGS="-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions -DNDEBUG" .
+# Do not define BOOST_LOG_NO_THREADS: the Boost.Log archive is built with thread
+# support, and that macro makes application objects request incompatible v2s_st symbols.
 
 
 # Install build helpers (cmake, ninja, ccache) and autotools for MPFR/GMP builds
@@ -134,9 +135,9 @@ RUN --mount=type=bind,source=.,target=/work,rw \
     -DBOOST_LIBRARYDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib \
     -DEMSCRIPT_CXX_FLAGS=\"${EMSCRIPT_CXX_FLAGS}\" \
     -DEMSCRIPT_C_FLAGS=\"${EMSCRIPT_C_FLAGS}\" \
-    -DCMAKE_EXE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\" \
-    -DCMAKE_SHARED_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\" \
-    -DCMAKE_MODULE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS}\""
+    -DCMAKE_EXE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS} \" \
+    -DCMAKE_SHARED_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS} \" \
+    -DCMAKE_MODULE_LINKER_FLAGS=\"${EMSCRIPT_LINKERFLAGS} \""
 
 RUN --mount=type=bind,source=.,target=/work,rw \
     --mount=type=cache,target=/build_wasm \

@@ -538,7 +538,7 @@ class Print;
 
             void reset();
 
-            void calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, size_t keep_last_n_blocks = 0, float additional_time = 0.0f);
+            void calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, bool collect_preview_data, size_t keep_last_n_blocks = 0, float additional_time = 0.0f);
         };
 
         struct UsedFilaments  // filaments per ColorChange
@@ -740,6 +740,20 @@ class Print;
 #endif // ENABLE_GCODE_VIEWER_DATA_CHECKING
 
     private:
+        struct ValidationMove
+        {
+            // Low-memory export retains only data required by printable-area validation.
+            // It deliberately omits the full MoveVertex data used by the G-code viewer:
+            // G-code line ID, move type (always Extrude here), colour, extrusion delta,
+            // requested/actual feedrates, width, height, flow, travel distance, fan,
+            // temperature, pressure advance, per-move timing, layer ID, and internal flag.
+            Vec3f         position;
+            ExtrusionRole extrusion_role;
+            unsigned char extruder_id;
+            int           object_label_id;
+            float         print_z;
+        };
+
         CommandProcessor m_command_processor;
         GCodeReader m_parser;
         EUnits m_units;
@@ -828,6 +842,12 @@ class Print;
         TimeProcessor m_time_processor;
         UsedFilaments m_used_filaments;
 
+        // Full move records are needed only by the G-code preview. When disabled, retractions,
+        // travels, wipes, tool changes, seams, and custom-marker moves are not retained at all;
+        // only compact extrusion endpoints survive until printable-area validation completes.
+        bool                        m_collect_preview_data{ true };
+        std::vector<ValidationMove> m_validation_moves;
+
         Print* m_print{ nullptr };
 
         GCodeProcessorResult m_result;
@@ -847,6 +867,7 @@ class Print;
                                               const std::vector<std::set<int>>& unprintable_filament_types );
         void apply_config(const PrintConfig& config);
         void set_print(Print* print) { m_print = print; }
+        void set_collect_preview_data(bool collect) { m_collect_preview_data = collect; }
 
         DynamicConfig export_config_for_render() const;
 
