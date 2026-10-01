@@ -73,6 +73,31 @@
 #include <new>
 #include <optional>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+
+// Optional module callbacks:
+//   onSlicingProgress({ percent, message, warningStep, flags })
+//   onSlicingError({ code, message })
+EM_JS(void, wasm_emit_progress, (int percent, const char *message, int warning_step, unsigned int flags), {
+    try {
+        if (typeof Module.onSlicingProgress === 'function')
+            Module.onSlicingProgress({ percent, message: UTF8ToString(message), warningStep: warning_step, flags });
+    } catch (error) {
+        console.error('OrcaSlicer onSlicingProgress callback failed:', error);
+    }
+});
+
+EM_JS(void, wasm_emit_error, (int code, const char *message), {
+    try {
+        if (typeof Module.onSlicingError === 'function')
+            Module.onSlicingError({ code, message: UTF8ToString(message) });
+    } catch (error) {
+        console.error('OrcaSlicer onSlicingError callback failed:', error);
+    }
+});
+#endif
+
 #if defined(__linux__) || defined(__LINUX__)
 #include <fcntl.h>
 #include <unistd.h>
@@ -484,6 +509,15 @@ void default_status_callback(const PrintBase::SlicingStatus& slicing_status)
 
     return;
 }
+
+#ifdef __EMSCRIPTEN__
+void wasm_status_callback(const PrintBase::SlicingStatus& slicing_status)
+{
+    if (slicing_status.warning_step != -1)
+        g_slicing_warnings.push_back(slicing_status);
+    wasm_emit_progress(slicing_status.percent, slicing_status.text.c_str(), slicing_status.warning_step, slicing_status.flags);
+}
+#endif
 
 
 static PrinterTechnology get_printer_technology(const DynamicConfig &config)
@@ -7106,6 +7140,9 @@ int CLI::run(int argc, char **argv)
                                     BOOST_LOG_TRIVIAL(info) << "set print's callback to default_status_callback.";
                                     print->set_status_callback(default_status_callback);
                                 }
+#elif defined(__EMSCRIPTEN__)
+                                print->set_status_callback(wasm_status_callback);
+                                wasm_status_callback(PrintBase::SlicingStatus{4, warning.string.empty() ? "Slicing begins" : warning.string, 0, warning.string.empty() ? -1 : 0});
 #else
                                 BOOST_LOG_TRIVIAL(info) << "set print's callback to default_status_callback.";
                                 print->set_status_callback(default_status_callback);
@@ -7266,6 +7303,8 @@ int CLI::run(int argc, char **argv)
                                     PrintBase::SlicingStatus slicing_status{100, "Slicing finished"};
                                     cli_status_callback(slicing_status);
                                 }
+#elif defined(__EMSCRIPTEN__)
+                                wasm_status_callback(PrintBase::SlicingStatus{100, "Slicing finished"});
 #endif
                                 if (export_slicedata) {
                                     BOOST_LOG_TRIVIAL(info) << "plate "<< index+1<< ":will export Slicing data to " << export_slice_data_dir;
@@ -8658,6 +8697,13 @@ int main(int argc, char **argv)
     // OrcaSlicer with SIGPIPE (exit 141) and produces no crash report.
     std::signal(SIGPIPE, SIG_IGN);
 #endif
-    return CLI().run(argc, argv);
+    const int exit_code = CLI().run(argc, argv);
+#ifdef __EMSCRIPTEN__
+    if (exit_code != CLI_SUCCESS) {
+        const auto error = cli_errors.find(exit_code);
+        wasm_emit_error(exit_code, (error != cli_errors.end() ? error->second : "Unknown slicer error.").c_str());
+    }
+#endif
+    return exit_code;
 }
 #endif /* _MSC_VER */

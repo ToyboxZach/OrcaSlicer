@@ -575,7 +575,7 @@ size_t GCodeProcessor::TimeMachine::plan_klipper(bool lazy)
     return flush_count;
 }
 
-void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, size_t keep_last_n_blocks, float additional_time, EMoveType target_move_type, bool is_final)
+void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, bool collect_preview_data, size_t keep_last_n_blocks, float additional_time, EMoveType target_move_type, bool is_final)
 {
     if (!enabled)
         return;
@@ -645,7 +645,10 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
         // reader until the pre-heat injector consumes it, so output is byte-identical.
         if (block.skippable_type != SkipType::stNone)
             result.skippable_part_time[block.skippable_type] += motion_time;
-        result.moves[block.move_id].time[static_cast<size_t>(mode)] = block_time;
+        // Low-memory export still accumulates total time, but has no MoveVertex in which to
+        // store per-move time. Actual-speed interpolation below is likewise unavailable.
+        if (collect_preview_data)
+            result.moves[block.move_id].time[static_cast<size_t>(mode)] = block_time;
         gcode_time.cache += block_time;
         //BBS
         if (block.flags.prepare_stage)
@@ -655,7 +658,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             first_layer_time += block_time;
 
         // detect actual speed moves required to render toolpaths using actual speed
-        if (mode == PrintEstimatedStatistics::ETimeMode::Normal) {
+        if (collect_preview_data && mode == PrintEstimatedStatistics::ETimeMode::Normal) {
             GCodeProcessorResult::MoveVertex& curr_move = result.moves[block.move_id];
             if (curr_move.type != EMoveType::Extrude &&
                 curr_move.type != EMoveType::Travel &&
@@ -2956,7 +2959,7 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     // (is_active() == false) apply_inverse is identity and behaviour is
     // unchanged from before.
     const bool machine_frame_active = m_machine_frame_transform.is_active();
-    auto compare_pos = [&](const GCodeProcessorResult::MoveVertex &move) -> Vec3d {
+    auto compare_pos = [&](const auto &move) -> Vec3d {
         Vec3d pos = move.position.cast<double>();
         if (!machine_frame_active)
             return pos;
@@ -2978,29 +2981,37 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     {
         Points pos;
         Points pos_custom;
-        float  max_print_z;
-        float  max_print_z_custom;
+        float  max_print_z{ 0.0f };
+        float  max_print_z_custom{ 0.0f };
     };
     std::map<int, std::map<int, GCodePosInfo>> gcode_path_pos; // object_id, filament_id, pos
-    for (const GCodeProcessorResult::MoveVertex &move : m_result.moves) {
-        // sometimes, the start line extrude was outside the edge of plate a little, this is allowed, so do not include into the gcode_path_pos
-        if (move.type == EMoveType::Extrude /* && move.extrusion_role != ExtrusionRole::erFlush || move.type == EMoveType::Travel*/) {
-            const Vec3d cp = compare_pos(move);
-            // For belt printers we read Z from the inverse-transformed position
-            // (post-origin-snap, pre-machine-frame).  Otherwise keep the
-            // original print_z source (the slicer's layer-Z comment) so
-            // non-belt behaviour is bit-for-bit unchanged.
-            const float z_for_height = machine_frame_active ? float(cp.z()) : move.print_z;
-            if (move.extrusion_role == ExtrusionRole::erCustom) {
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(cp));
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom =
-                    std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom, z_for_height);
-            } else {
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos.emplace_back(to_2d(cp));
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z = std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z,
-                                                                                                   z_for_height);
-            }
+    auto collect_extrusion = [&](const auto &move) {
+        const Vec3d cp = compare_pos(move);
+        // Belt positions must be transformed back to the build-volume frame.
+        const float z_for_height = machine_frame_active ? float(cp.z()) : move.print_z;
+        if (move.extrusion_role == ExtrusionRole::erCustom) {
+            gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(cp));
+            gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom =
+                std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom, z_for_height);
+        } else {
+            gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos.emplace_back(to_2d(cp));
+            gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z =
+                std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z, z_for_height);
         }
+    };
+
+    if (m_collect_preview_data) {
+        for (const GCodeProcessorResult::MoveVertex &move : m_result.moves)
+            if (move.type == EMoveType::Extrude)
+                collect_extrusion(move);
+    } else {
+        // No preview vector exists in low-memory mode. Validation has only extrusion endpoints,
+        // role, extruder, object label, and print Z; it cannot inspect speed, width, flow,
+        // temperature, colour, or non-extrusion moves because those were intentionally dropped.
+        for (const ValidationMove &move : m_validation_moves)
+            collect_extrusion(move);
+        m_validation_moves.clear();
+        m_validation_moves.shrink_to_fit();
     }
 
     bool valid = true;
@@ -3822,6 +3833,7 @@ void GCodeProcessor::reset()
     m_last_default_color_id = 0;
 
     m_options_z_corrector.reset();
+    m_validation_moves.clear();
 
     m_detect_layer_based_on_tag = false;
 
@@ -4661,7 +4673,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             store_move_vertex(EMoveType::Color_change);
             CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::ColorChange, filament_id + 1, color, "" };
             m_result.custom_gcode_per_print_z.emplace_back(item);
-            m_options_z_corrector.set();
+            if (m_collect_preview_data)
+                m_options_z_corrector.set();
             process_custom_gcode_time(CustomGCode::ColorChange);
             process_filaments(CustomGCode::ColorChange);
         }
@@ -4674,7 +4687,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         store_move_vertex(EMoveType::Pause_Print);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::PausePrint, get_filament_id() + 1, "", ""};
         m_result.custom_gcode_per_print_z.emplace_back(item);
-        m_options_z_corrector.set();
+        if (m_collect_preview_data)
+            m_options_z_corrector.set();
         process_custom_gcode_time(CustomGCode::PausePrint);
         return;
     }
@@ -4684,7 +4698,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         store_move_vertex(EMoveType::Custom_GCode);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::Custom, get_filament_id() + 1, "", ""};
         m_result.custom_gcode_per_print_z.emplace_back(item);
-        m_options_z_corrector.set();
+        if (m_collect_preview_data)
+            m_options_z_corrector.set();
         return;
     }
 
@@ -5364,11 +5379,13 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (origin == G1DiscretizationOrigin::G1)
             m_extruded_last_z = m_end_position[Z];
         // The queued blocks of the moves after the erased one follow them down the list.
-        if (const std::optional<size_t> erased = m_options_z_corrector.update(m_height)) {
-            for (TimeMachine& machine : m_time_processor.machines) {
-                for (TimeBlock& block : machine.blocks) {
-                    if (block.move_id > *erased)
-                        --block.move_id;
+        if (m_collect_preview_data) {
+            if (const std::optional<size_t> erased = m_options_z_corrector.update(m_height)) {
+                for (TimeMachine& machine : m_time_processor.machines) {
+                    for (TimeBlock& block : machine.blocks) {
+                        if (block.move_id > *erased)
+                            --block.move_id;
+                    }
                 }
             }
         }
@@ -5693,7 +5710,9 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
     const Vec3f plate_offset = {(float) m_x_offset, (float) m_y_offset, 0.0f};
 
-    if (m_seams_detector.is_active()) {
+    // Seam markers contain preview-only toolpath information. They are unavailable in low-memory
+    // mode because it does not retain the preceding MoveVertex needed to reconstruct the seam.
+    if (m_collect_preview_data && m_seams_detector.is_active()) {
         // check for seam starting vertex
         if (type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
             //BBS: m_result.moves.back().position has plate offset, must minus plate offset before calculate the real seam position
@@ -5729,7 +5748,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             m_seams_detector.activate(false);
         }
     }
-    else if (type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
+    else if (m_collect_preview_data && type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
         m_seams_detector.activate(true);
         m_seams_detector.set_first_vertex(m_result.moves.back().position - m_extruder_offsets[filament_id] - plate_offset);
     }
@@ -7569,6 +7588,16 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     const float store_z = (m_processing_start_custom_gcode && m_result.belt_tilt_angle == 0.f)
         ? m_first_layer_height
         : m_end_position[Z] - m_z_offset;
+    const Vec3f position = Vec3f(m_end_position[X] + m_x_offset, m_end_position[Y] + m_y_offset, store_z) +
+                           m_extruder_offsets[filament_id];
+
+    if (!m_collect_preview_data) {
+        // The G-code preview is unavailable in this mode: discard every non-extrusion move and
+        // all rendering fields. Keep only the endpoint metadata required by boundary validation.
+        if (type == EMoveType::Extrude)
+            m_validation_moves.push_back({ position, m_extrusion_role, static_cast<unsigned char>(filament_id), m_object_label_id, m_print_z });
+        return;
+    }
 
     m_result.moves.push_back({
         m_last_line_id,
@@ -7577,7 +7606,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         static_cast<unsigned char>(filament_id),
         m_cp_color.current,
         //BBS: add plate's offset to the rendering vertices
-        Vec3f(m_end_position[X] + m_x_offset, m_end_position[Y] + m_y_offset, store_z) + m_extruder_offsets[filament_id],
+        position,
         static_cast<float>(m_end_position[E] - m_start_position[E]),
         m_feedrate,
         0.0f, // actual feedrate
@@ -8107,8 +8136,8 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
         machine.klipper = m_flavor == gcfKlipper;
-        machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), keep_last_n_blocks, additional_time, target_move_type, is_final);
-        if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
+        machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_collect_preview_data, keep_last_n_blocks, additional_time, target_move_type, is_final);
+        if (m_collect_preview_data && static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
             actual_speed_moves = std::move(machine.actual_speed_moves);
     }
 

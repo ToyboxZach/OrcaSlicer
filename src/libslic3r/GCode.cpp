@@ -3126,14 +3126,17 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 // free functions called by GCode::_do_export()
 namespace DoExport {
     static void init_gcode_processor(const PrintConfig& config, GCodeProcessor& processor,
-                                     const std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase>& nozzle_group_result = nullptr)
+                                     const std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase>& nozzle_group_result,
+                                     bool collect_preview_data)
     {
         processor.reset();
         // Slot-resolution context for the streaming replay (reset() just cleared it). This is NOT
         // the post-stream result-field handover at the end of do_export, which gates the richer
         // change-time model and must stay after the stream.
         processor.initialize_from_context(nozzle_group_result);
-        processor.initialize_result_moves();
+        processor.set_collect_preview_data(collect_preview_data);
+        if (collect_preview_data)
+            processor.initialize_result_moves();
         processor.apply_config(config);
         processor.configure_exclusion_volume_path_check(config);
     }
@@ -3420,7 +3423,12 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // init as filament map
     update_layer_related_config(0);
 
-    DoExport::init_gcode_processor(print.config(), m_processor, print.get_layered_nozzle_group_result());
+#ifdef SLIC3R_HEADLESS
+    constexpr bool collect_preview_data = false;
+#else
+    constexpr bool collect_preview_data = true;
+#endif
+    DoExport::init_gcode_processor(print.config(), m_processor, print.get_layered_nozzle_group_result(), collect_preview_data);
     set_mass_locator(m_processor, print);
     const bool is_bbl_printers = print.is_BBL_printer();
     const bool skip_config_block = print.config().gcode_skip_config_block;

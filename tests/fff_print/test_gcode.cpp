@@ -37,6 +37,26 @@
 
 using namespace Slic3r;
 
+TEST_CASE("G-code export collects preview moves only with GUI support", "[GCode]")
+{
+    Print print;
+    Model model;
+    Test::init_print({Test::cube(20.)}, print, model, {
+        {"layer_height", 0.2},
+        {"first_layer_height", 0.2}
+    });
+    ScopedTemporaryFile file(".gcode");
+    GCodeProcessorResult result;
+    print.set_status_silent();
+    print.process();
+    print.export_gcode(file.string(), &result, nullptr);
+#ifdef SLIC3R_HEADLESS
+    REQUIRE(result.moves.empty());
+#else
+    REQUIRE_FALSE(result.moves.empty());
+#endif
+}
+
 TEST_CASE("Kobra 2 layer-change templates do not emit numeric commands", "[GCode][Kobra2][Regression]")
 {
     const char *template_key = GENERATE("before_layer_change_gcode", "layer_change_gcode");

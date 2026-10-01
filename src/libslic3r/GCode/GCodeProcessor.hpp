@@ -878,7 +878,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
             // additional_time is attributed to the first block matching target_move_type
             // (EMoveType::Noop matches any block, i.e. the first processed block).
-            void calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, size_t keep_last_n_blocks = 0, float additional_time = 0.0f, EMoveType target_move_type = EMoveType::Noop, bool is_final = false);
+            void calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, bool collect_preview_data, size_t keep_last_n_blocks = 0, float additional_time = 0.0f, EMoveType target_move_type = EMoveType::Noop, bool is_final = false);
         };
 
         struct UsedFilaments  // filaments per ColorChange
@@ -1235,6 +1235,20 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         using MassLocator = std::function<MassLocation(const Vec3d &point, bool support)>;
 
     private:
+        struct ValidationMove
+        {
+            // Low-memory export retains only data required by printable-area validation.
+            // It deliberately omits the full MoveVertex data used by the G-code viewer:
+            // G-code line ID, move type (always Extrude here), colour, extrusion delta,
+            // requested/actual feedrates, width, height, flow, travel distance, fan,
+            // temperature, pressure advance, per-move timing, layer ID, and internal flag.
+            Vec3f         position;
+            ExtrusionRole extrusion_role;
+            unsigned char extruder_id;
+            int           object_label_id;
+            float         print_z;
+        };
+
         CommandProcessor m_command_processor;
         GCodeReader m_parser;
         // Belt printer: the belt keys of the loaded file's config block (plus the bed they
@@ -1399,6 +1413,12 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::vector<std::pair<unsigned int, unsigned int>> m_actual_speed_id_map;
         UsedFilaments m_used_filaments;
 
+        // Full move records are needed only by the G-code preview. When disabled, retractions,
+        // travels, wipes, tool changes, seams, and custom-marker moves are not retained at all;
+        // only compact extrusion endpoints survive until printable-area validation completes.
+        bool                        m_collect_preview_data{ true };
+        std::vector<ValidationMove> m_validation_moves;
+
         Print* m_print{ nullptr };
 
         GCodeProcessorResult m_result;
@@ -1445,6 +1465,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         void initialize_from_context(const std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase>& nozzle_group_result) {
             m_nozzle_group_result = nozzle_group_result;
         }
+        void set_collect_preview_data(bool collect) { m_collect_preview_data = collect; }
 
         DynamicConfig export_config_for_render() const;
 
