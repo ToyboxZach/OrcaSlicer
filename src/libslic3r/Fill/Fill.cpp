@@ -8,6 +8,7 @@
 #include "../Print.hpp"
 #include "../PrintConfig.hpp"
 #include "../Surface.hpp"
+#include "../Utils.hpp"
 
 #include "AABBTreeLines.hpp"
 #include "ExtrusionEntity.hpp"
@@ -851,6 +852,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
             it->second.push_back(exp);
     };
 
+	{
+	ScopedDetailedProfile profile("infill.group_fills.collect_surface_params");
 	for (size_t region_id = 0; region_id < layer.regions().size(); ++ region_id) {
 		const LayerRegion  &layerm = *layer.regions()[region_id];
 		region_to_surface_params[region_id].assign(layerm.fill_surfaces.size(), nullptr);
@@ -997,6 +1000,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 		        region_to_surface_params[region_id][&surface - &layerm.fill_surfaces.surfaces.front()] = &(*it_params);
 		    }
 	}
+    }
 
 	surface_fills.reserve(set_surface_params.size());
 	for (const SurfaceFillParams &params : set_surface_params) {
@@ -1004,7 +1008,9 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 		surface_fills.emplace_back(params);
 	}
 
-	for (size_t region_id = 0; region_id < layer.regions().size(); ++ region_id) {
+    {
+    ScopedDetailedProfile profile("infill.group_fills.assemble_surface_fills");
+    for (size_t region_id = 0; region_id < layer.regions().size(); ++ region_id) {
 		const LayerRegion &layerm = *layer.regions()[region_id];
 	    for (const Surface &surface : layerm.fill_surfaces.surfaces)
 	        if (surface.surface_type != stInternalVoid) {
@@ -1030,8 +1036,10 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 				}
 	        }
 	}
+    }
 
 	{
+        ScopedDetailedProfile profile("infill.group_fills.mutual_clip");
 		Polygons all_polygons;
 		for (SurfaceFill &fill : surface_fills)
 			if (! fill.expolygons.empty()) {
@@ -1056,6 +1064,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
     // TODO: detect and investigate whether there could be narrow regions without
     // any void neighbors
     if (has_internal_voids) {
+		ScopedDetailedProfile profile("infill.group_fills.internal_void_geometry");
     	// Internal voids are generated only if "infill_only_where_needed" or "infill_every_layers" are active.
         coord_t  distance_between_surfaces = 0;
         Polygons surfaces_polygons;
@@ -1131,6 +1140,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 
 	// BBS: detect narrow internal solid infill area and use ipConcentricInternal pattern instead
 	if (layer.object()->config().detect_narrow_internal_solid_infill) {
+        ScopedDetailedProfile profile("infill.group_fills.narrow_solid_detection");
 		size_t surface_fills_size = surface_fills.size();
 		for (size_t i = 0; i < surface_fills_size; i++) {
 			if (surface_fills[i].surface.surface_type != stInternalSolid)
@@ -1138,7 +1148,10 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 
 			ExPolygons normal_infill;
             ExPolygons narrow_infill;
+            {
+            ScopedDetailedProfile split_profile("infill.group_fills.split_solid_surface");
             split_solid_surface(layer.id(), surface_fills[i], normal_infill, narrow_infill);
+            }
 
 			if (narrow_infill.empty()) {
 				// BBS: has no narrow expolygon
@@ -1192,6 +1205,7 @@ void export_group_fills_to_svg(const char *path, const std::vector<SurfaceFill> 
 // friend to Layer
 void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive::Octree* support_fill_octree, FillLightning::Generator* lightning_generator)
 {
+    ScopedDetailedProfile profile("infill.layer.total");
 	for (LayerRegion *layerm : m_regions)
 		layerm->fills.clear();
 
@@ -1200,7 +1214,13 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
 //	this->export_region_fill_surfaces_to_svg_debug("10_fill-initial");
 #endif /* SLIC3R_DEBUG_SLICE_PROCESSING */
     LockRegionParam lock_param;
-    std::vector<SurfaceFill>     surface_fills = group_fills(*this, lock_param);
+    std::vector<SurfaceFill> surface_fills;
+    {
+    ScopedDetailedProfile profile("infill.layer.group_surfaces");
+    surface_fills = group_fills(*this, lock_param);
+    }
+
+
 	const Slic3r::BoundingBox bbox 			= this->object()->bounding_box();
 	const auto                resolution 	= this->object()->print()->config().resolution.value;
 
@@ -1319,9 +1339,16 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
                 params.dont_adjust = true;
             }
 			// BBS: make fill
-			f->fill_surface_extrusion(&surface_fill.surface,
-				params,
-				m_regions[surface_fill.region_id]->fills.entities);
+            if (surface_fill.params.pattern == ipGrid) {
+                ScopedDetailedProfile grid_profile("infill.layer.grid_surface");
+                f->fill_surface_extrusion(&surface_fill.surface,
+                    params,
+                    m_regions[surface_fill.region_id]->fills.entities);
+            } else {
+                f->fill_surface_extrusion(&surface_fill.surface,
+                    params,
+                    m_regions[surface_fill.region_id]->fills.entities);
+            }
 		}
     }
 

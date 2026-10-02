@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <boost/log/trivial.hpp>
 #include <tbb/parallel_for.h>
 #include <tbb/task_arena.h>
 #include <tbb/task_scheduler_observer.h>
@@ -234,6 +235,7 @@ void name_tbb_thread_pool_threads_set_locale()
 		return;
 	initialized = true;
 
+	const size_t profile_tbb_cap = cap_tbb_parallelism_for_profile();
 	cap_tbb_parallelism_for_wasm();
 
 #ifdef __EMSCRIPTEN__
@@ -261,7 +263,16 @@ void name_tbb_thread_pool_threads_set_locale()
 	// TBB will respect the task affinity mask on Linux and spawn less threads than std::thread::hardware_concurrency().
 //	const size_t nthreads_hw = std::thread::hardware_concurrency();
 	const size_t nthreads_hw = tbb::this_task_arena::max_concurrency();
+
 	size_t       nthreads    = nthreads_hw;
+
+	// The arena limit may differ from a global_control cap; report both separately.
+	BOOST_LOG_TRIVIAL(warning) << "[ORCA_TBB] max_concurrency=" << nthreads_hw
+	                       << " profile_parallelism_cap=" << profile_tbb_cap
+	                       << " thread_naming_concurrency=" << nthreads;
+
+	if (profile_tbb_cap > 0 && profile_tbb_cap < nthreads)
+		nthreads = profile_tbb_cap;
 
 #ifdef SLIC3R_PROFILE
 	// Shiny profiler is not thread safe, thus disable parallelization.

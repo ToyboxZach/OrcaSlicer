@@ -1,8 +1,11 @@
 #include "Utils.hpp"
 #include "I18N.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <climits>
 #include <memory>
+#include <mutex>
 #include <cstdlib>
 #include <locale>
 #include <ctime>
@@ -10,6 +13,8 @@
 #include <stdio.h>
 #include <filesystem>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 #include <iostream>
 
 #ifdef __EMSCRIPTEN__
@@ -129,6 +134,82 @@ EM_JS(int, js_orca_wasm_max_threads, (), {
 namespace Slic3r {
 
 static boost::log::trivial::severity_level logSeverity = boost::log::trivial::error;
+
+namespace {
+
+struct DetailedProfileStat {
+	size_t calls = 0;
+	double total_seconds = 0.0;
+	double max_seconds = 0.0;
+};
+
+std::mutex detailed_profile_mutex;
+std::unordered_map<std::string, DetailedProfileStat> detailed_profile_stats;
+
+} // namespace
+
+bool detailed_profile_enabled()
+{
+	static const bool enabled = [] {
+		const char* value = std::getenv("ORCA_PROFILE_DETAIL");
+		return value != nullptr && value[0] != '\0' && std::string(value) != "0";
+	}();
+	return enabled;
+}
+
+void reset_detailed_profile_stats()
+{
+	if (!detailed_profile_enabled())
+		return;
+
+	std::scoped_lock lock(detailed_profile_mutex);
+	detailed_profile_stats.clear();
+}
+
+void log_detailed_profile_stats(const char* category)
+{
+	if (!detailed_profile_enabled())
+		return;
+
+	std::vector<std::pair<std::string, DetailedProfileStat>> stats;
+	{
+		std::scoped_lock lock(detailed_profile_mutex);
+		stats.reserve(detailed_profile_stats.size());
+		for (const auto& entry : detailed_profile_stats)
+			stats.emplace_back(entry);
+	}
+	std::sort(stats.begin(), stats.end(), [](const auto& left, const auto& right) {
+		return left.second.total_seconds > right.second.total_seconds;
+	});
+	for (const auto& entry : stats) {
+		BOOST_LOG_TRIVIAL(info) << "[ORCA_PROFILE_DETAIL] category=" << category
+								<< " operation=" << entry.first
+								<< " calls=" << entry.second.calls
+								<< " sum_wall_s=" << entry.second.total_seconds
+								<< " max_call_wall_s=" << entry.second.max_seconds;
+	}
+}
+
+ScopedDetailedProfile::ScopedDetailedProfile(const char* name)
+	: m_name(name)
+	, m_enabled(detailed_profile_enabled())
+{
+	if (m_enabled)
+		m_start = std::chrono::steady_clock::now();
+}
+
+ScopedDetailedProfile::~ScopedDetailedProfile()
+{
+	if (!m_enabled)
+		return;
+
+	const double elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count();
+	std::scoped_lock lock(detailed_profile_mutex);
+	DetailedProfileStat& stat = detailed_profile_stats[m_name];
+	++stat.calls;
+	stat.total_seconds += elapsed_seconds;
+	stat.max_seconds = std::max(stat.max_seconds, elapsed_seconds);
+}
 
 static boost::log::trivial::severity_level level_to_boost(unsigned level)
 {
@@ -289,6 +370,46 @@ void cap_tbb_parallelism_for_wasm()
 							<< ", wasm_thread_cap=" << wasm_thread_cap
 							<< ", cap_source=" << cap_source;
 #endif
+#endif
+}
+
+size_t cap_tbb_parallelism_for_profile()
+{
+#ifdef __linux__
+	const char* cap_value = std::getenv("ORCA_PROFILE_TBB_THREADS");
+	if (cap_value == nullptr || cap_value[0] == '\0')
+		return 0;
+
+	size_t parsed_chars = 0;
+	unsigned long requested_cap = 0;
+	try {
+		requested_cap = std::stoul(cap_value, &parsed_chars);
+	} catch (...) {
+		BOOST_LOG_TRIVIAL(warning) << "Ignoring invalid ORCA_PROFILE_TBB_THREADS='" << cap_value << "'.";
+		return 0;
+	}
+	if (parsed_chars != std::string(cap_value).size() || requested_cap == 0 || requested_cap > static_cast<unsigned long>(INT_MAX)) {
+		BOOST_LOG_TRIVIAL(warning) << "Ignoring invalid ORCA_PROFILE_TBB_THREADS='" << cap_value << "'.";
+		return 0;
+	}
+
+#ifdef TBB_HAS_GLOBAL_CONTROL
+	static std::unique_ptr<tbb::global_control> profile_tbb_control;
+	if (!profile_tbb_control) {
+		profile_tbb_control = std::make_unique<tbb::global_control>(
+			tbb::global_control::max_allowed_parallelism, static_cast<size_t>(requested_cap));
+		BOOST_LOG_TRIVIAL(info) << "[ORCA_PROFILE] tbb_max_parallelism=" << requested_cap;
+	}
+#else
+	static std::unique_ptr<tbb::task_scheduler_init> profile_tbb_scheduler;
+	if (!profile_tbb_scheduler) {
+		profile_tbb_scheduler = std::make_unique<tbb::task_scheduler_init>(static_cast<int>(requested_cap));
+		BOOST_LOG_TRIVIAL(info) << "[ORCA_PROFILE] tbb_task_scheduler_init=" << requested_cap;
+	}
+#endif
+	return static_cast<size_t>(requested_cap);
+#else
+	return 0;
 #endif
 }
 

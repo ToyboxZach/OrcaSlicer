@@ -24,10 +24,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <unordered_set>
@@ -62,6 +64,9 @@ namespace Slic3r {
 namespace {
 
 #ifdef __linux__
+// The resource profiler runs helper threads of its own; do not count those as slicer threads.
+std::atomic<size_t> active_resource_profiler_samplers{0};
+
 bool resource_profiling_enabled()
 {
     static const bool enabled = [] {
@@ -79,6 +84,24 @@ size_t current_resident_bytes()
     if (!(statm >> total_pages >> resident_pages))
         return 0;
     return resident_pages * static_cast<size_t>(sysconf(_SC_PAGE_SIZE));
+}
+
+size_t current_application_thread_count()
+{
+    std::ifstream status("/proc/self/status");
+    std::string line;
+    while (std::getline(status, line)) {
+        if (line.compare(0, 8, "Threads:") == 0) {
+            std::istringstream value(line.substr(8));
+            size_t thread_count = 0;
+            if (value >> thread_count) {
+                const size_t profiler_samplers = active_resource_profiler_samplers.load(std::memory_order_relaxed);
+                return thread_count > profiler_samplers ? thread_count - profiler_samplers : 0;
+            }
+            break;
+        }
+    }
+    return 0;
 }
 
 double resource_usage_seconds(const timeval& value)
@@ -115,12 +138,24 @@ public:
         m_cpu_start = current_process_cpu_usage();
         m_rss_start = current_resident_bytes();
         m_rss_peak = m_rss_start;
-        m_sampler = std::thread([this] {
-            while (!m_stop.load(std::memory_order_relaxed)) {
-                m_rss_peak = std::max(m_rss_peak, current_resident_bytes());
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
-        });
+        m_threads_start = current_application_thread_count();
+        m_threads_peak = m_threads_start;
+        active_resource_profiler_samplers.fetch_add(1, std::memory_order_relaxed);
+        try {
+            m_sampler = std::thread([this] {
+                while (!m_stop.load(std::memory_order_relaxed)) {
+                    m_rss_peak = std::max(m_rss_peak, current_resident_bytes());
+                    m_threads_peak = std::max(m_threads_peak, current_application_thread_count());
+                    std::unique_lock<std::mutex> lock(m_sampler_mutex);
+                    m_sampler_cv.wait_for(lock, std::chrono::milliseconds(50), [this] {
+                        return m_stop.load(std::memory_order_relaxed);
+                    });
+                }
+            });
+        } catch (...) {
+            active_resource_profiler_samplers.fetch_sub(1, std::memory_order_relaxed);
+            throw;
+        }
 #else
         (void)phase;
 #endif
@@ -133,11 +168,15 @@ public:
             return;
 
         m_stop.store(true, std::memory_order_relaxed);
+        m_sampler_cv.notify_all();
         m_sampler.join();
+        active_resource_profiler_samplers.fetch_sub(1, std::memory_order_relaxed);
         const auto wall_end = std::chrono::steady_clock::now();
         const ProcessCpuUsage cpu_end = current_process_cpu_usage();
         const size_t rss_end = current_resident_bytes();
+        const size_t threads_end = current_application_thread_count();
         m_rss_peak = std::max(m_rss_peak, rss_end);
+        m_threads_peak = std::max(m_threads_peak, threads_end);
         const double wall_seconds = std::chrono::duration<double>(wall_end - m_wall_start).count();
 
         std::ostringstream report;
@@ -149,7 +188,10 @@ public:
                << std::setprecision(1)
                << " rss_start_mb=" << static_cast<double>(m_rss_start) / (1024.0 * 1024.0)
                << " rss_end_mb=" << static_cast<double>(rss_end) / (1024.0 * 1024.0)
-               << " rss_sampled_peak_mb=" << static_cast<double>(m_rss_peak) / (1024.0 * 1024.0);
+               << " rss_sampled_peak_mb=" << static_cast<double>(m_rss_peak) / (1024.0 * 1024.0)
+               << " threads_start=" << m_threads_start
+               << " threads_end=" << threads_end
+               << " threads_sampled_peak=" << m_threads_peak;
         BOOST_LOG_TRIVIAL(info) << report.str();
 #endif
     }
@@ -162,7 +204,11 @@ private:
     ProcessCpuUsage m_cpu_start;
     size_t m_rss_start = 0;
     size_t m_rss_peak = 0;
+    size_t m_threads_start = 0;
+    size_t m_threads_peak = 0;
     std::atomic<bool> m_stop{false};
+    std::mutex m_sampler_mutex;
+    std::condition_variable m_sampler_cv;
     std::thread m_sampler;
 #endif
 };
@@ -2469,8 +2515,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
 
 
 
-    if (ScopedResourceProfiler phase_profile("wipe_tower_and_tool_ordering"); true) {
     if (this->set_started(psWipeTower)) {
+        ScopedResourceProfiler phase_profile("wipe_tower_and_tool_ordering");
         {
             std::vector<std::set<int>> geometric_unprintables(m_config.nozzle_diameter.size());
             for (PrintObject* obj : m_objects) {
@@ -2498,7 +2544,6 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
 
         }
         this->set_done(psWipeTower);
-    }
     }
 
     if (this->has_wipe_tower()) {
@@ -2656,9 +2701,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             break;
         }
     }
-    if (ScopedResourceProfiler phase_profile("gcode_path_conflict_check"); true) {
     if(!m_no_check /*&& !has_adaptive_layer_height*/)
     {
+        ScopedResourceProfiler phase_profile("gcode_path_conflict_check");
         using Clock                 = std::chrono::high_resolution_clock;
         auto            startTime   = Clock::now();
         std::optional<const FakeWipeTower *> wipe_tower_opt = {};
@@ -2675,7 +2720,6 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         if (conflictRes.has_value()) {
             BOOST_LOG_TRIVIAL(error) << boost::format("gcode path conflicts found between %1% and %2%")%conflictRes.value()._objName1 %conflictRes.value()._objName2;
         }
-    }
     }
 
     BOOST_LOG_TRIVIAL(info) << "Slicing process finished." << log_memory_info();

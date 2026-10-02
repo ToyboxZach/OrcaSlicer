@@ -2,6 +2,7 @@
 #define slic3r_Utils_hpp_
 
 #include <iomanip>
+#include <chrono>
 #include <locale>
 #include <utility>
 #include <functional>
@@ -91,8 +92,31 @@ extern std::string format_memsize(size_t bytes, unsigned int decimals = 1);
 // The string is non-empty if the loglevel >= info (3) or ignore_loglevel==true.
 // Latter is used to get the memory info from SysInfoDialog.
 extern std::string log_memory_info(bool ignore_loglevel = false);
+// Enable detailed aggregated timing with ORCA_PROFILE_DETAIL=1. This is intended for
+// profiling runs and must not be enabled during normal slicing.
+extern bool detailed_profile_enabled();
+extern void reset_detailed_profile_stats();
+extern void log_detailed_profile_stats(const char* category);
+
+class ScopedDetailedProfile
+{
+public:
+    explicit ScopedDetailedProfile(const char* name);
+    ~ScopedDetailedProfile();
+
+    ScopedDetailedProfile(const ScopedDetailedProfile&) = delete;
+    ScopedDetailedProfile& operator=(const ScopedDetailedProfile&) = delete;
+
+private:
+    const char* m_name;
+    std::chrono::steady_clock::time_point m_start;
+    bool m_enabled;
+};
+
 extern void disable_multi_threading();
 extern void cap_tbb_parallelism_for_wasm();
+// Optional Linux profiling override; reads ORCA_PROFILE_TBB_THREADS when set.
+extern size_t cap_tbb_parallelism_for_profile();
 // Returns the size of physical memory (RAM) in bytes.
 extern size_t total_physical_memory();
 

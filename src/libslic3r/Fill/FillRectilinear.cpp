@@ -16,6 +16,7 @@
 #include "../Geometry.hpp"
 #include "../Surface.hpp"
 #include "../ShortestPath.hpp"
+#include "../Utils.hpp"
 #include "../VariableWidth.hpp"
 
 #include "FillRectilinear.hpp"
@@ -3009,6 +3010,8 @@ bool FillRectilinear::fill_surface_by_multilines(const Surface *surface, FillPar
     coord_t line_width   = coord_t(scale_(this->spacing));
     coord_t line_spacing = coord_t(scale_(this->spacing) * params.multiline / params.density);
     std::pair<float, Point> rotate_vector = this->_infill_direction(surface);
+    {
+    ScopedDetailedProfile profile("infill.grid.generate_scanlines");
     for (const SweepParams &sweep : sweep_params) {
         // Rotate polygons so that we can work with vertical lines here
         float angle = rotate_vector.first + sweep.angle_base;
@@ -3016,18 +3019,29 @@ bool FillRectilinear::fill_surface_by_multilines(const Surface *surface, FillPar
         make_fill_lines(ExPolygonWithOffset(poly_with_offset_base, -angle), rotate_vector.second.rotated(-angle), angle,
                         line_width + coord_t(SCALED_EPSILON), line_spacing, coord_t(scale_(sweep.pattern_shift)), fill_lines);
     }
+    }
         
     // Apply multiline offset if needed
+    {
+    ScopedDetailedProfile profile("infill.grid.multiline_expand");
     multiline_fill(fill_lines, params, spacing);
+    }
  
     // Contract surface polygon by half line width to avoid excesive overlap with perimeter
-    const ExPolygons contracted = offset_ex(surface->expolygon, -float(scale_(0.5 * this->spacing)));
+    ExPolygons contracted;
+    {
+    ScopedDetailedProfile profile("infill.grid.contract_surface");
+    contracted = offset_ex(surface->expolygon, -float(scale_(0.5 * this->spacing)));
+    }
 
     // if contraction results in empty ExPolygons, use original surface
     const ExPolygons& intersection_surface = contracted.empty() ? ExPolygons{surface->expolygon} : contracted;
 
     // Intersect polylines with perimeter
+    {
+    ScopedDetailedProfile profile("infill.grid.clip_scanlines");
     fill_lines = intersection_pl(std::move(fill_lines), intersection_surface);
+    }
 
     if ((params.pattern == ipLateralLattice || params.pattern == ipLateralHoneycomb) && params.multiline > 1)
         remove_overlapped(fill_lines, line_width);
@@ -3037,9 +3051,11 @@ bool FillRectilinear::fill_surface_by_multilines(const Surface *surface, FillPar
             if (fill_lines.size() > 1)
                 fill_lines = chain_polylines(std::move(fill_lines));
             append(polylines_out, std::move(fill_lines));
-        } else
+        } else {
+            ScopedDetailedProfile connect_profile("infill.grid.connect_scanlines");
             connect_infill(std::move(fill_lines), to_polygons(intersection_surface), get_extents(surface->expolygon.contour), polylines_out,
                            this->spacing, params);
+        }
     }
 
     return true;

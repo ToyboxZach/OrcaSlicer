@@ -96,6 +96,30 @@ ldd orca-slicer
 
 For GUI builds, you'll need X11 forwarding or a display server.
 
+## Profile a model in Docker
+
+Use the helper to build the headless Linux image if needed, slice a model, and collect measurements:
+
+```bash
+bash scripts/profile_slice_docker.sh /path/to/model.3mf
+```
+
+The script writes `profile.log`, `profile-time.txt`, and the generated G-code into `./orca-profile-output` by default. You can choose another output directory and plate:
+
+```bash
+bash scripts/profile_slice_docker.sh /path/to/model.3mf ./slice-profile 2
+```
+
+For an STL with exported OrcaSlicer JSON presets, place the `profiles/` directory beside the model's containing directory (for example, `Test Files/giant/model.stl` and `Test Files/profiles/*.json`). The script auto-detects `../profiles`, loading machine/process files with `--load-settings` and filament files with `--load-filaments`. You can also pass the profile directory as the fourth argument or set `ORCA_PROFILE_DIR`.
+
+The container defaults to the AWS `m6a.large` resource envelope: `linux/amd64`, 2 vCPU, and 8 GiB RAM, with swap disabled for the run. Override the CPU and memory caps with `ORCA_PROFILE_CPUS` and `ORCA_PROFILE_MEMORY`; the platform can be changed with `ORCA_DOCKER_PLATFORM`. Set `ORCA_PROFILE_TBB_THREADS` to optionally cap oneTBB parallelism for a profiling comparison (for example, `ORCA_PROFILE_TBB_THREADS=2`). On macOS, Docker Desktop must be allocated at least 8 GiB. These limits match the instance capacity, but running under Docker Desktop does not reproduce the AWS AMD EPYC CPU model or performance.
+
+The runner enables `ORCA_PROFILE_DETAIL=1`, which adds aggregated nested timings for infill preparation, surface grouping, grid scanline generation, clipping, and path connection. After changing slicer source, use `ORCA_PROFILE_REBUILD=1` for one run so Docker rebuilds the executable with those changes while reusing its dependency caches.
+
+`profile.log` contains `[ORCA_PROFILE]` records for slice/perimeter generation, infill, support, conflict checking, G-code export, and other major phases. Each record includes wall time, process CPU time (summed across worker threads), and start/end RSS plus a 50 ms sampled RSS peak. `profile-time.txt` is GNU `time -v` output for the whole CLI process, including maximum resident set size. RSS peaks sampled inside short phases may be missed; the whole-process peak is still reported separately.
+
+The script enables this instrumentation only for its run. To use it with another Linux build, set `ORCA_PROFILE=1` and run OrcaSlicer with `--debug 3`. A 3MF with embedded print settings is the easiest input; standalone STL files need printer, filament, and process profiles supplied separately.
+
 ## Cache Management
 
 Docker BuildKit caches are used for:
