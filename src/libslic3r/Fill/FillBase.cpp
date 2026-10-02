@@ -22,6 +22,7 @@
 #include "../Point.hpp"
 #include "../PrintConfig.hpp"
 #include "../Surface.hpp"
+#include "../Utils.hpp"
 #include "../libslic3r.h"
 #include "../VariableWidth.hpp"
 
@@ -1742,7 +1743,12 @@ void Fill::connect_infill(Polylines &&infill_ordered, const std::vector<const Po
     return;
 #endif
 
-    BoundaryInfillGraph graph = create_boundary_infill_graph(infill_ordered, boundary_src, bbox, spacing);
+    ScopedDetailedProfile total_profile("infill.connect.total");
+    BoundaryInfillGraph graph;
+    {
+    ScopedDetailedProfile profile("infill.connect.create_boundary_graph");
+    graph = create_boundary_infill_graph(infill_ordered, boundary_src, bbox, spacing);
+    }
 
     std::vector<size_t> merged_with(infill_ordered.size());
     std::iota(merged_with.begin(), merged_with.end(), 0);
@@ -1849,6 +1855,8 @@ void Fill::connect_infill(Polylines &&infill_ordered, const std::vector<const Po
         double                       arc_length;
     };
     std::vector<Arc> arches;
+    {
+    ScopedDetailedProfile profile("infill.connect.build_arcs");
     if (!params.dont_sort) {
         arches.reserve(graph.map_infill_end_point_to_boundary.size());
         for (ContourIntersectionPoint& cp : graph.map_infill_end_point_to_boundary)
@@ -1931,8 +1939,11 @@ void Fill::connect_infill(Polylines &&infill_ordered, const std::vector<const Po
             }
         }
     }
+    }
 
     //FIXME improve the Traveling Salesman problem with 2-opt and 3-opt local optimization.
+    {
+    ScopedDetailedProfile profile("infill.connect.merge_arcs");
     for (Arc &arc : arches)
         if (! arc.intersection->consumed && ! arc.intersection->next_on_contour->consumed) {
             // Indices of the polylines to be connected by a perimeter segment.
@@ -1977,6 +1988,7 @@ void Fill::connect_infill(Polylines &&infill_ordered, const std::vector<const Po
                 }
             }
         }
+    }
 
     // Distance along the contour to the nearest open end of another polyline, within 64 ends.
     auto distance_to_open_end = [&](const ContourIntersectionPoint &from, size_t polyline_idx, bool backwards) {
@@ -1996,6 +2008,8 @@ void Fill::connect_infill(Polylines &&infill_ordered, const std::vector<const Po
     };
 
     // Connect the remaining open infill lines to the perimeter lines if possible.
+    {
+    ScopedDetailedProfile profile("infill.connect.anchor_remaining");
     for (ContourIntersectionPoint &contour_point : graph.map_infill_end_point_to_boundary)
         if (! contour_point.consumed && contour_point.contour_idx != boundary_idx_unconnected) {
             const Points              &contour        = graph.boundary[contour_point.contour_idx];
@@ -2078,7 +2092,9 @@ void Fill::connect_infill(Polylines &&infill_ordered, const std::vector<const Po
                                  backwards, std::max(0., length), line_half_width);
             }
         }
+    }
 
+    ScopedDetailedProfile emit_profile("infill.connect.emit_paths");
     polylines_out.reserve(polylines_out.size() + std::count_if(infill_ordered.begin(), infill_ordered.end(), [](const Polyline &pl) { return ! pl.empty(); }));
 	for (Polyline &pl : infill_ordered)
 		if (! pl.empty())
