@@ -49,3 +49,8 @@ internal_docs/
 orca-slicer.js
 orca-slicer.wasm
 orca-slicer.worker.js
+orca-slicer
+orca-profile-output/plate_1.gcode
+orca-profile-output/profile-time.txt
+orca-profile-output/result.json
+orca_slicer

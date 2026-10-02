@@ -267,7 +267,7 @@ void name_tbb_thread_pool_threads_set_locale()
 	size_t       nthreads    = nthreads_hw;
 
 	// The arena limit may differ from a global_control cap; report both separately.
-	BOOST_LOG_TRIVIAL(warning) << "[ORCA_TBB] max_concurrency=" << nthreads_hw
+	BOOST_LOG_TRIVIAL(info) << "[ORCA_TBB] max_concurrency=" << nthreads_hw
 	                       << " profile_parallelism_cap=" << profile_tbb_cap
 	                       << " thread_naming_concurrency=" << nthreads;
 

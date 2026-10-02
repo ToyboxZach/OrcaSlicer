@@ -3085,30 +3085,37 @@ FilamentTempType Print::get_filament_temp_type(const std::string& filament_type)
 
 int Print::get_hrc_by_nozzle_type(const NozzleType&type)
 {
-    static std::map<std::string, int>nozzle_type_to_hrc;
-    if (nozzle_type_to_hrc.empty()) {
-        fs::path file_path = fs::path(resources_dir()) / "info" / "nozzle_info.json";
+    static const std::map<std::string, int> nozzle_type_to_hrc = [] {
+        const std::map<std::string, int> defaults = {
+            {"hardened_steel", 55},
+            {"stainless_steel", 20},
+            {"tungsten_carbide", 85},
+            {"brass", 2},
+            {"E3D", 55},
+            {"undefine", 0}
+        };
+        const fs::path file_path = fs::path(resources_dir()) / "info" / "nozzle_info.json";
         boost::nowide::ifstream in(file_path.string());
-        //std::ifstream in(file_path.string());
-        json j;
+        if (!in.is_open()) {
+            BOOST_LOG_TRIVIAL(warning) << "get_hrc_by_nozzle_type: cannot open " << file_path.string()
+                                       << "; using built-in nozzle hardness values.";
+            return defaults;
+        }
+
         try {
-            j = json::parse(in);
-            in.close();
-            for (const auto& elem : j["nozzle_hrc"].items())
-                nozzle_type_to_hrc[elem.key()] = elem.value();
+            const json j = json::parse(in);
+            auto values = j.at("nozzle_hrc").get<std::map<std::string, int>>();
+            if (!values.empty())
+                return values;
+            BOOST_LOG_TRIVIAL(warning) << "get_hrc_by_nozzle_type: empty nozzle_hrc table in " << file_path.string()
+                                       << "; using built-in nozzle hardness values.";
         }
-        catch (const json::parse_error& err) {
-            in.close();
-            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": parse " << file_path.string() << " got a nlohmann::detail::parse_error, reason = " << err.what();
-            nozzle_type_to_hrc = {
-                {"hardened_steel",55},
-                {"stainless_steel",20},
-                {"tungsten_carbide", 85},
-                {"brass",2},
-                {"undefine",0}
-            };
+        catch (const json::exception& err) {
+            BOOST_LOG_TRIVIAL(warning) << "get_hrc_by_nozzle_type: invalid " << file_path.string() << ": " << err.what()
+                                       << "; using built-in nozzle hardness values.";
         }
-    }
+        return defaults;
+    }();
     auto iter = nozzle_type_to_hrc.find(NozzleTypeEumnToStr[type]);
     if (iter != nozzle_type_to_hrc.end())
         return iter->second;

@@ -8,7 +8,7 @@ IMAGE_TAG="${1:-orcaslicer-linux:latest}"
 CID=$(docker create "$IMAGE_TAG")
 
 # 2) Copy Linux binary from /artifacts/ in the image
-docker cp "$CID:/artifacts/orca-slicer" ./orca-slicer
+docker cp "$CID:/artifacts/orca-slicer" ./orca_slicer
 
 echo "✓ Extracted Linux binary to current directory:"
 ls -lh orca-slicer
