@@ -6,7 +6,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "libslic3r/Utils.hpp"
+#ifndef SLIC3R_HEADLESS // The headless core already provides the NanoSVG implementation.
 #define NANOSVG_IMPLEMENTATION
+#endif
 #include "nanosvg/nanosvg.h"
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvg/nanosvgrast.h"

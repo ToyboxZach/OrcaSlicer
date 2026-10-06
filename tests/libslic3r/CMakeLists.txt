@@ -61,13 +61,10 @@ add_executable(${_TEST_NAME}_tests
     test_minimum_spanning_tree.cpp
     test_nozzle_volume_type.cpp
     test_obj.cpp
-    test_step.cpp
     test_stl.cpp
     test_triangle_selector.cpp
     test_meshboolean.cpp
-    test_mesh_repair.cpp
     test_trianglemesh_slicer.cpp
-    test_marchingsquares.cpp
     test_lay_on_face.cpp
     test_model.cpp
     test_utils.cpp
@@ -101,7 +98,11 @@ if (SLIC3R_CAD)
         test_slvs_constraints.cpp)
 endif ()
 
-if (TARGET OpenVDB::openvdb)
+if (NOT SLIC3R_HEADLESS)
+    target_sources(${_TEST_NAME}_tests PRIVATE test_marchingsquares.cpp test_mesh_repair.cpp test_step.cpp)
+endif()
+
+if (TARGET OpenVDB::openvdb AND NOT SLIC3R_HEADLESS)
     target_sources(${_TEST_NAME}_tests PRIVATE test_hollowing.cpp)
 endif()
 

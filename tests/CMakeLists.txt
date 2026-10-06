@@ -90,9 +90,13 @@ endfunction()
 
 add_subdirectory(libnest2d)
 add_subdirectory(libslic3r)
-add_subdirectory(slic3rutils)
+if (TARGET libslic3r_gui)
+    add_subdirectory(slic3rutils)
+endif()
 add_subdirectory(fff_print)
-add_subdirectory(sla_print)
+if (NOT SLIC3R_HEADLESS)
+    add_subdirectory(sla_print)
+endif()
 add_subdirectory(filament_group)
 
 # End-to-end checks of the orca-slicer binary. Linux only: they read result.json, which the CLI

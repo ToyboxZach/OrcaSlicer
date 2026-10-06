@@ -51,3 +51,6 @@ scripts/Dockerfile
 scripts/DockerBuild.sh
 scripts/DockerRun.sh
 scripts/.dockerignore
+
+# Built-in test fixtures are needed by DockerFileLinuxTests
+!tests/data/

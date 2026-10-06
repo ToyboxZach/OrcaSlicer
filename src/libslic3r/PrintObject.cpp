@@ -2119,10 +2119,9 @@ void PrintObject::detect_surfaces_type()
                         if (!cracks.empty()) {
                             if (lower_layer) { // Only detect small cracks for non-first layer, because first layer should always be bottom
                                 const float small_crack_threshold = -layerm->flow(frExternalPerimeter).scaled_width() * 1.5;
+                                BoundingBoxes bottom_bounds;
                                 
-                                // Only the bottom surfaces near a crack can take part: one that contains it must contain its box,
-                                // and one whose box misses the grown crack is left unchanged by removing it. A layer cut through
-                                // a fine relief has thousands of both, which made this loop quadratic.
+                                // Restrict clipping to bottom surfaces near each crack, allowing for the safety offset.
                                 for (const auto& crack : cracks) {
                                     bool is_small_crack = false;
                                     {
@@ -2131,18 +2130,28 @@ void PrintObject::detect_surfaces_type()
                                     }
                                     if (is_small_crack) {
                                         // For small cracks, if it's part of a large bottom surface, then it should be added to bottom as well
-                                        const BoundingBox crack_bbox = get_extents(crack);
                                         bool supported_by_large_bottom = false;
                                         {
                                             ScopedDetailedProfile profile("infill.detect_surfaces.thin_cracks.find_supporting_bottom");
                                             const double crack_area = crack.area();
-                                            supported_by_large_bottom = std::any_of(bottom.begin(), bottom.end(), [&crack, &crack_bbox, crack_area, small_crack_threshold](const Surface& s) {
-                                                const auto& se = s.expolygon;
-                                                return get_extents(se).inflated(SCALED_EPSILON).contains(crack_bbox)
-                                                    && se.area() > crack_area * 2
-                                                    && diff_ex(crack, se, ApplySafetyOffset::Yes).empty()
-                                                    && !offset_ex(diff_ex(se, crack), small_crack_threshold).empty();
-                                            });
+                                            const BoundingBox crack_bounds = get_extents(crack);
+                                            if (bottom_bounds.size() != bottom.size()) {
+                                                bottom_bounds.clear();
+                                                bottom_bounds.reserve(bottom.size());
+                                                for (const Surface& surface : bottom)
+                                                    bottom_bounds.push_back(get_extents(surface.expolygon).inflated(
+                                                        ClipperSafetyOffset * DefaultMiterLimit + SCALED_EPSILON));
+                                            }
+                                            supported_by_large_bottom = std::any_of(bottom.begin(), bottom.end(),
+                                                [&crack, &crack_bounds, &bottom, &bottom_bounds, crack_area, small_crack_threshold](const Surface& s) {
+                                                    const auto& se = s.expolygon;
+                                                    const BoundingBox& bounds = bottom_bounds[&s - bottom.data()];
+                                                    return se.area() > crack_area * 2
+                                                        // Keep touching/nearby or undefined bounds on the exact clipping path.
+                                                        && (!bounds.defined || !crack_bounds.defined || bounds.overlap(crack_bounds))
+                                                        && diff_ex(crack, se, ApplySafetyOffset::Yes).empty()
+                                                        && !offset_ex(diff_ex(se, crack), small_crack_threshold).empty();
+                                                });
                                         }
                                         if (supported_by_large_bottom)
                                             continue;
@@ -2159,6 +2168,7 @@ void PrintObject::detect_surfaces_type()
                                                 bot_tmp.emplace_back(std::move(b));
                                         }
                                         bottom = std::move(bot_tmp);
+                                        bottom_bounds.clear(); // Subsequent cracks must use the rebuilt bottom geometry.
                                     }
                                 }
                             }
@@ -3052,13 +3062,20 @@ void PrintObject::discover_vertical_shells()
                         regularized_shell.erase(std::remove_if(regularized_shell.begin(), regularized_shell.end(),
                                                                [&internal_volume, &internal_bboxes, &min_perimeter_infill_spacing,
                                                                 &object_volume](const ExPolygon &p) {
-                                                                   const bool small = p.area() < min_perimeter_infill_spacing * scaled(1.5) ||
-                                                                                      (p.area() < min_perimeter_infill_spacing * scaled(8.0) &&
-                                                                                       diff(to_polygons(p),
-                                                                                            ClipperUtils::clip_clipper_polygons_with_subject_bbox(
-                                                                                                object_volume, get_extents(p).inflated(SCALED_EPSILON)))
-                                                                                           .empty());
-                                                                   if (!small)
+                                                                   bool tiny_or_wrapped = false;
+                                                                   Polygons polygon_paths;
+                                                                   {
+                                                                       ScopedDetailedProfile profile("infill.vshell.drop_visibility_test");
+                                                                       const double polygon_area = p.area();
+                                                                       tiny_or_wrapped = polygon_area < min_perimeter_infill_spacing * scaled(1.5);
+                                                                       if (!tiny_or_wrapped && polygon_area < min_perimeter_infill_spacing * scaled(8.0)) {
+                                                                           polygon_paths = to_polygons(p);
+                                                                           tiny_or_wrapped = diff(polygon_paths,
+                                                                               ClipperUtils::clip_clipper_polygons_with_subject_bbox(
+                                                                                   object_volume, get_extents(p).inflated(SCALED_EPSILON))).empty();
+                                                                       }
+                                                                   }
+                                                                   if (!tiny_or_wrapped)
                                                                        return false;
                                                                    const Polygons    expanded = expand(to_polygons(p), min_perimeter_infill_spacing);
                                                                    const BoundingBox bbox     = get_extents(expanded);
