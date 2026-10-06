@@ -20,8 +20,12 @@ endif()
 
 add_subdirectory(libnest2d)
 add_subdirectory(libslic3r)
-add_subdirectory(slic3rutils)
+if (TARGET libslic3r_gui)
+    add_subdirectory(slic3rutils)
+endif()
 add_subdirectory(fff_print)
-add_subdirectory(sla_print)
+if (NOT SLIC3R_HEADLESS)
+    add_subdirectory(sla_print)
+endif()
 
 

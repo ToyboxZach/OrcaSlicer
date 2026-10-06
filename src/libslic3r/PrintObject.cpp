@@ -1574,6 +1574,7 @@ void PrintObject::detect_surfaces_type()
                         if (!cracks.empty()) {
                             if (lower_layer) { // Only detect small cracks for non-first layer, because first layer should always be bottom
                                 const float small_crack_threshold = -layerm->flow(frExternalPerimeter).scaled_width() * 1.5;
+                                BoundingBoxes bottom_bounds;
                                 
                                 for (const auto& crack : cracks) {
                                     bool is_small_crack = false;
@@ -1587,12 +1588,24 @@ void PrintObject::detect_surfaces_type()
                                         {
                                             ScopedDetailedProfile profile("infill.detect_surfaces.thin_cracks.find_supporting_bottom");
                                             const double crack_area = crack.area();
-                                            supported_by_large_bottom = std::any_of(bottom.begin(), bottom.end(), [&crack, crack_area, small_crack_threshold](const Surface& s) {
-                                                const auto& se = s.expolygon;
-                                                return se.area() > crack_area * 2
-                                                    && diff_ex(crack, se, ApplySafetyOffset::Yes).empty()
-                                                    && !offset_ex(diff_ex(se, crack), small_crack_threshold).empty();
-                                            });
+                                            const BoundingBox crack_bounds = get_extents(crack);
+                                            if (bottom_bounds.size() != bottom.size()) {
+                                                bottom_bounds.clear();
+                                                bottom_bounds.reserve(bottom.size());
+                                                for (const Surface& surface : bottom)
+                                                    bottom_bounds.push_back(get_extents(surface.expolygon).inflated(
+                                                        ClipperSafetyOffset * DefaultMiterLimit + SCALED_EPSILON));
+                                            }
+                                            supported_by_large_bottom = std::any_of(bottom.begin(), bottom.end(),
+                                                [&crack, &crack_bounds, &bottom, &bottom_bounds, crack_area, small_crack_threshold](const Surface& s) {
+                                                    const auto& se = s.expolygon;
+                                                    const BoundingBox& bounds = bottom_bounds[&s - bottom.data()];
+                                                    return se.area() > crack_area * 2
+                                                        // Keep touching/nearby or undefined bounds on the exact clipping path.
+                                                        && (!bounds.defined || !crack_bounds.defined || bounds.overlap(crack_bounds))
+                                                        && diff_ex(crack, se, ApplySafetyOffset::Yes).empty()
+                                                        && !offset_ex(diff_ex(se, crack), small_crack_threshold).empty();
+                                                });
                                         }
                                         if (supported_by_large_bottom)
                                             continue;
@@ -1605,6 +1618,7 @@ void PrintObject::detect_surfaces_type()
                                             surfaces_append(bot_tmp, diff_ex(b.expolygon, expanded_crack), b.surface_type);
                                         }
                                         bottom = std::move(bot_tmp);
+                                        bottom_bounds.clear(); // Subsequent cracks must use the rebuilt bottom geometry.
                                     }
                                 }
                             }
@@ -2318,7 +2332,7 @@ void PrintObject::discover_vertical_shells()
                                                                        tiny_or_wrapped = polygon_area < min_perimeter_infill_spacing * scaled(1.5);
                                                                        if (!tiny_or_wrapped && polygon_area < min_perimeter_infill_spacing * scaled(8.0)) {
                                                                            polygon_paths = to_polygons(p);
-                                                                           tiny_or_wrapped = diff(polygon_paths, object_volume).empty();
+                                                                           tiny_or_wrapped = diff_clipped(polygon_paths, object_volume).empty();
                                                                        }
                                                                    }
                                                                    if (!tiny_or_wrapped)

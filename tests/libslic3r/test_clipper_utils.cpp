@@ -4,11 +4,83 @@
 #include <iostream>
 #include <boost/filesystem.hpp>
 
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/SVG.hpp"
 
 using namespace Slic3r;
+
+TEST_CASE("Localized difference preserves shell visibility", "[ClipperUtils][local-clipping]")
+{
+    const auto rectangle = [](coord_t x0, coord_t y0, coord_t x1, coord_t y1) {
+        return Polygon{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+    };
+    const Polygon outer = rectangle(0, 0, scale_(20), scale_(20));
+    Polygon hole = rectangle(scale_(8), scale_(8), scale_(12), scale_(12));
+    hole.reverse();
+    const std::vector<Polygons> subjects{
+        {rectangle(scale_(2), scale_(2), scale_(3), scale_(3))},
+        {rectangle(scale_(9), scale_(9), scale_(10), scale_(10))},
+        {rectangle(scale_(19), scale_(2), scale_(21), scale_(3))},
+        {rectangle(scale_(20), scale_(2), scale_(21), scale_(3))},
+        {rectangle(scale_(30), scale_(30), scale_(31), scale_(31))},
+        {rectangle(scale_(-10), scale_(-10), scale_(-9), scale_(-9))},
+        {outer, hole},
+        {rectangle(scale_(2), scale_(2), scale_(3), scale_(3)),
+         rectangle(scale_(30), scale_(30), scale_(31), scale_(31))}
+    };
+    const std::vector<Polygons> clips{
+        {}, {outer}, {outer, hole},
+        {outer, hole, rectangle(scale_(100), scale_(100), scale_(110), scale_(110))},
+        {rectangle(scale_(100), scale_(100), scale_(110), scale_(110))},
+        {rectangle(scale_(-30), scale_(-30), scale_(30), scale_(30))},
+        {Polygon{{scale_(-40), scale_(-40)}, {scale_(40), scale_(-40)},
+                 {scale_(40), scale_(5)}, {scale_(5), scale_(5)},
+                 {scale_(5), scale_(40)}, {scale_(-40), scale_(40)}}}
+    };
+    for (const Polygons& subject : subjects) {
+        for (const Polygons& clip : clips) {
+            const Polygons reference = diff(subject, clip);
+            const Polygons localized = diff_clipped(subject, clip);
+            REQUIRE(localized.empty() == reference.empty());
+            REQUIRE(xor_ex(union_ex(reference), union_ex(localized)).empty());
+        }
+    }
+}
+
+TEST_CASE("Conservative crack bounds preserve exact support decisions", "[ClipperUtils][local-clipping]")
+{
+    const auto rectangle = [](coord_t x0, coord_t y0, coord_t x1, coord_t y1) {
+        return ExPolygon{Polygon{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}};
+    };
+    const float threshold = -float(scale_(0.5));
+    const ExPolygon crack = rectangle(scale_(2), scale_(2), scale_(2.2), scale_(2.2));
+    const std::vector<ExPolygon> bottoms{
+        rectangle(0, 0, scale_(5), scale_(5)),
+        rectangle(scale_(2.2), scale_(2), scale_(5), scale_(5)),
+        rectangle(scale_(2.2) + 1, scale_(2), scale_(5), scale_(5)),
+        rectangle(scale_(10), scale_(10), scale_(20), scale_(20))
+    };
+    const BoundingBox crack_bounds = get_extents(crack);
+    for (const ExPolygon& bottom : bottoms) {
+        const bool reference = bottom.area() > crack.area() * 2
+            && diff_ex(crack, bottom, ApplySafetyOffset::Yes).empty()
+            && !offset_ex(diff_ex(bottom, crack), threshold).empty();
+        const bool bounded = get_extents(bottom).inflated(
+            ClipperSafetyOffset * DefaultMiterLimit + SCALED_EPSILON).overlap(crack_bounds) && reference;
+        REQUIRE(bounded == reference);
+    }
+    REQUIRE(get_extents(bottoms[1]).overlap(crack_bounds)); // Touching bounds must not be rejected.
+
+    const ExPolygons rebuilt = diff_ex(bottoms.front(), offset_ex(crack, -threshold));
+    for (const ExPolygon& bottom : rebuilt) {
+        const bool reference = diff_ex(crack, bottom, ApplySafetyOffset::Yes).empty();
+        const bool bounded = get_extents(bottom).inflated(
+            ClipperSafetyOffset * DefaultMiterLimit + SCALED_EPSILON).overlap(crack_bounds) && reference;
+        REQUIRE(bounded == reference);
+    }
+}
 
 SCENARIO("Various Clipper operations - xs/t/11_clipper.t", "[ClipperUtils]") {
     // CCW oriented contour

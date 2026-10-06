@@ -17,7 +17,6 @@ add_executable(${_TEST_NAME}_tests
     test_mutable_priority_queue.cpp
     test_stl.cpp
     test_meshboolean.cpp
-    test_marchingsquares.cpp
     test_timeutils.cpp
     test_voronoi.cpp
     test_optimizers.cpp
@@ -26,7 +25,11 @@ add_executable(${_TEST_NAME}_tests
     ../libnest2d/printer_parts.cpp
     )
 
-if (TARGET OpenVDB::openvdb)
+if (NOT SLIC3R_HEADLESS)
+    target_sources(${_TEST_NAME}_tests PRIVATE test_marchingsquares.cpp)
+endif()
+
+if (TARGET OpenVDB::openvdb AND NOT SLIC3R_HEADLESS)
     target_sources(${_TEST_NAME}_tests PRIVATE test_hollowing.cpp)
 endif()
 
