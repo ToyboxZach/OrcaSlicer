@@ -1,0 +1,24 @@
+# Reuse a current headless Linux image and its already-built dependencies:
+# docker build --platform=linux/amd64 -f DockerFileLinuxTests -t orcaslicer-linux:test .
+ARG ORCA_TEST_BASE_IMAGE=orcaslicer-linux:latest
+FROM ${ORCA_TEST_BASE_IMAGE}
+
+RUN --mount=type=bind,source=.,target=/work,rw \
+    --mount=type=cache,target=/build \
+    --mount=type=cache,target=/ccache \
+    cmake -S /work -B /build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_C_COMPILER=gcc \
+      -DCMAKE_CXX_COMPILER=g++ \
+      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+      -DSLIC3R_GUI=OFF \
+      -DSLIC3R_HEADLESS=ON \
+      -DSLIC3R_DESKTOP_INTEGRATION=OFF \
+      -DSLIC3R_STATIC=ON \
+      -DBUILD_TESTS=ON \
+      -DORCA_TOOLS=ON \
+      -DDEP_BUILD_DIR=/src/deps/build \
+      -DCMAKE_PREFIX_PATH=/src/deps/build/OrcaSlicer_dep/usr/local && \
+    cmake --build /build --target libslic3r_tests fff_print_tests libnest2d_tests --parallel 4 && \
+    ctest --test-dir /build --output-on-failure --no-tests=error --timeout 180 --parallel 2
