@@ -55,3 +55,4 @@ orca-profile-output/profile-time.txt
 orca-profile-output/result.json
 orca_slicer
 *.pyc
+**/ab_compare/**

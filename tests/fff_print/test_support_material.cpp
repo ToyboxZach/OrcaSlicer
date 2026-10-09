@@ -1,5 +1,6 @@
 #include <catch2/catch_all.hpp>
 
+#include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/GCodeReader.hpp"
 #include "libslic3r/Layer.hpp"
 
@@ -7,6 +8,83 @@
 
 using namespace Slic3r::Test;
 using namespace Slic3r;
+
+TEST_CASE("Support blockers reject unreachable support", "[SupportMaterial][blockers]")
+{
+    const auto support_type = GENERATE(stNormalAuto, stTreeAuto);
+    const auto support_style = GENERATE(smsTreeOrganic, smsTreeStrong);
+    const auto sequence = GENERATE(PrintSequence::ByLayer, PrintSequence::ByObject);
+    const bool build_plate_only = GENERATE(true, false);
+    const int raft_layers = GENERATE(0, 3);
+    CAPTURE(support_type, support_style, sequence, build_plate_only, raft_layers);
+
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.set_key_value("enable_support", new ConfigOptionBool(true));
+    config.set_key_value("support_type", new ConfigOptionEnum<SupportType>(support_type));
+    config.set_key_value("support_style", new ConfigOptionEnum<SupportMaterialStyle>(support_style));
+    config.set_key_value("print_sequence", new ConfigOptionEnum<PrintSequence>(sequence));
+    config.set_key_value("raft_layers", new ConfigOptionInt(raft_layers));
+    config.set_key_value("support_on_build_plate_only", new ConfigOptionBool(build_plate_only));
+    // Both generators must support the bridge so the baseline demonstrates support passing through the future blocker.
+    config.set_key_value("bridge_no_support", new ConfigOptionBool(false));
+    config.set_key_value("max_bridge_length", new ConfigOptionFloat(0.));
+    config.set_key_value("tree_support_auto_brim", new ConfigOptionBool(false));
+    config.set_key_value("tree_support_brim_width", new ConfigOptionFloat(3.));
+
+    Model model;
+    Print print;
+    TriangleMesh bridge_mesh = mesh(TestMesh::bridge);
+    bridge_mesh.translate(-100., -80., 0.);
+    ModelObject *model_object = model.add_object();
+    model_object->add_volume(bridge_mesh);
+    model_object->add_instance();
+    print.auto_assign_extruders(model_object);
+    print.apply(model, config);
+    print.set_status_silent();
+    print.process();
+
+    // The bridge's underside is at Z=5, so this blocker leaves its contact surface unobstructed.
+    // Span the entire local support workspace so a tree cannot route around the blocked volume.
+    TriangleMesh blocker_mesh = make_cube(500., 500., 3.);
+    blocker_mesh.translate(-250., -250., 0.);
+    MeshSlicingParamsEx params;
+    params.trafo = print.get_object(0)->trafo_centered();
+    const ExPolygons blocker_xy = slice_mesh_ex(blocker_mesh.its, { 2.f }, params).front();
+    REQUIRE_FALSE(blocker_xy.empty());
+
+    auto in_blocked_height = [](const PrintObject &object, const SupportLayer &layer) {
+        const double z = layer.print_z - 0.5 * layer.height - object.slicing_parameters().object_print_z_min;
+        return z > 1. + EPSILON && z < 3. - EPSILON;
+    };
+    bool originally_crossed_blocker = false;
+    for (const SupportLayer *layer : print.get_object(0)->support_layers())
+        if (in_blocked_height(*print.get_object(0), *layer))
+            originally_crossed_blocker |= !intersection_ex(layer->support_fills.polygons_covered_by_width(), blocker_xy).empty();
+    REQUIRE(originally_crossed_blocker);
+
+    model_object->add_volume(blocker_mesh)->set_type(ModelVolumeType::SUPPORT_BLOCKER);
+    print.apply(model, config);
+    print.process();
+
+    for (const SupportLayer *layer : print.get_object(0)->support_layers()) {
+        const double layer_z = layer->print_z - 0.5 * layer->height - print.get_object(0)->slicing_parameters().object_print_z_min;
+        if (raft_layers == 0 && layer_z < 0.5)
+            // Without a raft, this includes any support base brim at the first print layer.
+            REQUIRE(intersection_ex(layer->support_fills.polygons_covered_by_width(), blocker_xy).empty());
+        if (build_plate_only && layer_z > 3. + EPSILON && layer_z < 5. - EPSILON) {
+            // With no model-supported endpoints, the impassable blocker leaves no valid upper branch route.
+            REQUIRE(intersection_ex(layer->support_fills.polygons_covered_by_width(), blocker_xy).empty());
+        }
+        if (!in_blocked_height(*print.get_object(0), *layer))
+            continue;
+        ExPolygons support_coverage = union_ex(layer->support_fills.polygons_covered_by_width());
+        ExPolygons overlap = intersection_ex(support_coverage, blocker_xy);
+        CAPTURE(layer->print_z, layer->height, layer_z, overlap.size());
+        REQUIRE(overlap.empty());
+        REQUIRE(intersection_ex(layer->support_islands, blocker_xy).empty());
+        REQUIRE(intersection_ex(layer->lslices, blocker_xy).empty());
+    }
+}
 
 TEST_CASE("SupportMaterial: Three raft layers created", "[SupportMaterial][.]")
 {

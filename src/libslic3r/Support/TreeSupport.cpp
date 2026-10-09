@@ -3396,6 +3396,9 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
     branch_scale_factor = tan(object.config().tree_support_branch_angle.value * M_PI / 180.);
     clear_nodes();
     m_max_move_distances.resize(object.layers().size(), 0);
+    // Use the same blocker masks as contact detection for branch collisions and brim clipping.
+    std::vector<Polygons> blocker_layers = object.slice_support_blockers();
+    object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, blocker_layers);
     // Tree support pathing uses m_layer_outlines / m_layer_outlines_below as collision and routing guides.
     // Include sibling object slices here so tree branches avoid and can reason about objects that share the same by-layer print.
     // Memory/time impact: the outline cache grows by overlapping sibling contours, then collision/avoidance cache generation
@@ -3437,10 +3440,16 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
             }
         }
 
+        // Blockers are collision outlines, but unlike model slices they are not valid places for a branch to rest.
+        ExPolygons outline_below = outline;
+        if (layer_nr < blocker_layers.size())
+            for (const ExPolygon &poly : union_ex(blocker_layers[layer_nr]))
+                poly.simplify(scale_(m_radius_sample_resolution), &outline);
+
         if (layer_nr == 0)
-            m_layer_outlines_below.push_back(outline);
+            m_layer_outlines_below.push_back(std::move(outline_below));
         else
-            m_layer_outlines_below.push_back(union_ex(m_layer_outlines_below.end()[-1], outline));
+            m_layer_outlines_below.push_back(union_ex(m_layer_outlines_below.end()[-1], outline_below));
     }
 }
 

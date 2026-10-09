@@ -42,13 +42,16 @@ private:
 	// Generate top contact layers supporting overhangs.
 	// For a soluble interface material synchronize the layer heights with the object, otherwise leave the layer height undefined.
 	// If supports over bed surface only are requested, don't generate contact layers over an object.
-	SupportGeneratorLayersPtr top_contact_layers(const PrintObject &object, const std::vector<Polygons> &buildplate_covered, SupportGeneratorLayerStorage &layer_storage) const;
+	// Return cumulative blocker masks for contact detection and lower-layer projection.
+	SupportGeneratorLayersPtr top_contact_layers(const PrintObject &object, const std::vector<Polygons> &buildplate_covered,
+		SupportGeneratorLayerStorage &layer_storage, std::vector<Polygons> &blockers_layers) const;
 
 	// Generate bottom contact layers supporting the top contact layers.
 	// For a soluble interface material synchronize the layer heights with the object, 
 	// otherwise set the layer height to a bridging flow of a support interface nozzle.
+	// Apply the cumulative blocker masks through the same trimming path used by build-plate coverage.
 	SupportGeneratorLayersPtr bottom_contact_layers_and_layer_support_areas(
-		const PrintObject &object, const SupportGeneratorLayersPtr &top_contacts, std::vector<Polygons> &buildplate_covered, 
+		const PrintObject &object, const SupportGeneratorLayersPtr &top_contacts, const std::vector<Polygons> &blockers_layers, std::vector<Polygons> &buildplate_covered,
 		SupportGeneratorLayerStorage &layer_storage, std::vector<Polygons> &layer_support_areas) const;
 
 	// Trim the top_contacts layers with the bottom_contacts layers if they overlap, so there would not be enough vertical space for both of them.

@@ -96,7 +96,6 @@ TreeModelVolumes::TreeModelVolumes(
 
 #else
     {
-        m_anti_overhang = print_object.slice_support_blockers();
         TreeSupportMeshGroupSettings mesh_settings(print_object);
         const TreeSupportSettings config{ mesh_settings, print_object.slicing_parameters() };
         m_current_min_xy_dist = config.xy_min_distance;
@@ -105,6 +104,12 @@ TreeModelVolumes::TreeModelVolumes(
         m_increase_until_radius = config.increase_radius_until_radius;
         m_radius_0 = config.getRadius(0);
         m_raft_layers = config.raft_layers;
+        std::vector<Polygons> blocker_object_layers = print_object.slice_support_blockers();
+        print_object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, blocker_object_layers);
+        m_anti_overhang.resize(m_raft_layers.size() + blocker_object_layers.size());
+        for (size_t layer_idx = 0; layer_idx < blocker_object_layers.size(); ++layer_idx)
+            // Keep blockers separate only so they cannot become model-contact targets below.
+            m_anti_overhang[layer_idx + m_raft_layers.size()] = blocker_object_layers[layer_idx];
         m_current_outline_idx = 0;
 
         m_layer_outlines.emplace_back(mesh_settings, std::vector<Polygons>{});
@@ -124,6 +129,9 @@ TreeModelVolumes::TreeModelVolumes(
             for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx) {
                 const Layer *layer = print_object.get_layer(layer_idx - num_raft_layers);
                 ExPolygons layer_slices = layer->lslices;
+                if (size_t object_layer_idx = layer_idx - num_raft_layers; object_layer_idx < blocker_object_layers.size())
+                    // Treat blockers as ordinary collision outlines so reachability is decided during branch growth.
+                    append(layer_slices, union_ex(blocker_object_layers[object_layer_idx]));
                 if (consider_other_objects) {
                     // Convert sibling outlines to print_object-local coordinates before simplification.
                     // Keep the Z-overlap test here as organic support layer indices may include raft layers while object layers do not.
@@ -503,7 +511,7 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
             });
 
             // 2) Sum over top / bottom ranges.
-            const bool processing_last_mesh = outline_idx == layer_outline_indices.size();
+            const bool processing_last_mesh = outline_idx == layer_outline_indices.back();
             tbb::parallel_for(tbb::blocked_range<LayerIndex>(data.begin(), data.end()),
                 [&collision_areas_offsetted, &outlines, &machine_border = m_machine_border, &anti_overhang = m_anti_overhang, radius, 
                     xy_distance, z_distance_bottom_layers, z_distance_top_layers, min_resolution = m_min_resolution, &data, processing_last_mesh, &throw_on_cancel]
@@ -551,9 +559,7 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
                                     // not support an overhang<90 degree than to risk fusing to it.
                                 append(collisions, offset(union_ex(collision_areas_original), radius + required_range_x, ClipperLib::jtMiter, 1.2));
                             }
-                        collisions = processing_last_mesh && layer_idx < int(anti_overhang.size()) ? 
-                                union_(collisions, offset(union_ex(anti_overhang[layer_idx]), radius, ClipperLib::jtMiter, 1.2)) : 
-                                union_(collisions);
+                        collisions = union_(collisions);
                         auto &dst = data[layer_idx];
                         if (processing_last_mesh) {
                             if (! dst.empty())

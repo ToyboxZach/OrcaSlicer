@@ -394,7 +394,8 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     // should the support material expose to the object in order to guarantee
     // that it will be effective, regardless of how it's built below.
     // If raft is to be generated, the 1st top_contact layer will contain the 1st object layer silhouette without holes.
-    SupportGeneratorLayersPtr top_contacts = this->top_contact_layers(object, buildplate_covered, layer_storage);
+    std::vector<Polygons> blockers_layers;
+    SupportGeneratorLayersPtr top_contacts = this->top_contact_layers(object, buildplate_covered, layer_storage, blockers_layers);
     if (top_contacts.empty())
         // Nothing is supported, no supports are generated.
         return;
@@ -419,7 +420,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     // may get merged and trimmed by this->generate_base_layers() if the support layers are not synchronized with object layers.
     std::vector<Polygons> layer_support_areas;
     SupportGeneratorLayersPtr bottom_contacts = this->bottom_contact_layers_and_layer_support_areas(
-        object, top_contacts, buildplate_covered,
+        object, top_contacts, blockers_layers, buildplate_covered,
         layer_storage, layer_support_areas);
 
     if (object.print()->canceled())
@@ -1294,6 +1295,13 @@ namespace SupportMaterialInternal {
     }
 }
 
+static void append_layer_mask(Polygons &cumulative_mask, const Polygons &layer_mask)
+{
+    if (layer_mask.empty())
+        return;
+    cumulative_mask = cumulative_mask.empty() ? layer_mask : union_(cumulative_mask, layer_mask);
+}
+
 std::vector<Polygons> PrintObjectSupportMaterial::buildplate_covered(const PrintObject &object) const
 {
     // Build support on a build plate only? If so, then collect and union all the surfaces below the current layer.
@@ -1313,8 +1321,7 @@ std::vector<Polygons> PrintObjectSupportMaterial::buildplate_covered(const Print
             // inflate the polygons over and over.
             Polygons &covered = buildplate_covered[layer_id];
             covered = buildplate_covered[layer_id - 1];
-            polygons_append(covered, offset(lower_layer.lslices, scale_(0.01)));
-            covered = union_(covered);
+            append_layer_mask(covered, offset(lower_layer.lslices, scale_(0.01)));
         }
         BOOST_LOG_TRIVIAL(debug) << "PrintObjectSupportMaterial::buildplate_covered() - end";
     }
@@ -1336,9 +1343,14 @@ struct SupportAnnotations
         // spanning just the projection between the two slices.
         // Subtracting them as they are may leave unwanted narrow
         // residues of diff_polygons that would then be supported.
+        // Reuse the build-plate prefix-mask pattern: blockers at lower layers make overhangs above them unreachable.
+        Polygons blockers_below;
         for (auto& blocker : blockers_layers) {
             if (!blocker.empty())
                 blocker = expand(union_(blocker), float(1000. * SCALED_EPSILON));
+            // Like buildplate_covered, carry lower-layer obstacles forward so overhangs above a blocker cannot start support.
+            append_layer_mask(blockers_below, blocker);
+            blocker = blockers_below;
         }
     }
 
@@ -1496,7 +1508,7 @@ static inline ExPolygons detect_overhangs(
             if (diff_polygons.empty())
                 continue;
 
-            // Apply the "support blockers".
+            // Exclude overhang contact above any blocker below this layer.
             if (!annotations.blockers_layers.empty() && !annotations.blockers_layers[layer_id].empty()) {
                 const auto& blocker = annotations.blockers_layers[layer_id];
                 diff_polygons = diff(diff_polygons, blocker);
@@ -1667,6 +1679,11 @@ static inline std::tuple<Polygons, Polygons, double> detect_contacts(
                     polygons_append(contact_polygons, diff(enforcer_polygons, slices_margin.all_polygons.empty() ? slices_margin.polygons : slices_margin.all_polygons));
                 }
             }
+    }
+
+    if (layer_id < annotations.blockers_layers.size() && !annotations.blockers_layers[layer_id].empty()) {
+        contact_polygons = diff(contact_polygons, annotations.blockers_layers[layer_id]);
+        enforcer_polygons = diff(enforcer_polygons, annotations.blockers_layers[layer_id]);
     }
 
     return std::make_tuple(std::move(contact_polygons), std::move(enforcer_polygons), no_interface_offset);
@@ -2091,7 +2108,7 @@ static OverhangCluster* add_overhang(std::vector<OverhangCluster>& clusters, ExP
 // For a soluble interface material synchronize the layer heights with the object, otherwise leave the layer height undefined.
 // If supports over bed surface only are requested, don't generate contact layers over an object.
 SupportGeneratorLayersPtr PrintObjectSupportMaterial::top_contact_layers(
-    const PrintObject &object, const std::vector<Polygons> &buildplate_covered, SupportGeneratorLayerStorage &layer_storage) const
+    const PrintObject &object, const std::vector<Polygons> &buildplate_covered, SupportGeneratorLayerStorage &layer_storage, std::vector<Polygons> &blockers_layers) const
 {
 #ifdef SLIC3R_DEBUG
     static int iRun = 0;
@@ -2107,6 +2124,7 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::top_contact_layers(
 
     // Slice support enforcers / support blockers.
     SupportAnnotations annotations(object, buildplate_covered);
+    blockers_layers = annotations.blockers_layers;
 
     // Output layers, sorted by top Z.
     SupportGeneratorLayersPtr contact_out;
@@ -2506,7 +2524,7 @@ static inline SupportGeneratorLayer* detect_bottom_contacts(
 
 // Returns polygons to print + polygons to propagate downwards.
 // Called twice: First for normal supports, possibly trimmed by "on build plate only", second for support enforcers not trimmed by "on build plate only".
-static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer &layer, const SupportGridParams &grid_params, const Polygons &overhangs, Polygons *layer_buildplate_covered
+static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer &layer, const SupportGridParams &grid_params, const Polygons &overhangs, const Polygons &blockers, Polygons *layer_buildplate_covered
 #ifdef SLIC3R_DEBUG 
     , size_t iRun, size_t layer_id, const char *debug_name
 #endif /* SLIC3R_DEBUG */
@@ -2516,6 +2534,10 @@ static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer 
 //            Polygons trimming = union_(to_polygons(layer.slices), touching, true);
     Polygons trimming = layer_buildplate_covered ? std::move(*layer_buildplate_covered) : offset(layer.lslices, float(SCALED_EPSILON));
     Polygons overhangs_projection = diff(overhangs, trimming);
+    if (!blockers.empty()) {
+        overhangs_projection = diff(overhangs_projection, blockers);
+        trimming = union_(trimming, blockers);
+    }
 
 #ifdef SLIC3R_DEBUG
     SVG::export_expolygons(debug_out_path("support-support-areas-%s-raw-%d-%lf.svg", debug_name, iRun, layer.print_z),
@@ -2588,7 +2610,7 @@ static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer 
 // For a soluble interface material synchronize the layer heights with the object, 
 // otherwise set the layer height to a bridging flow of a support interface nozzle.
 SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_layer_support_areas(
-    const PrintObject &object, const SupportGeneratorLayersPtr &top_contacts, std::vector<Polygons> &buildplate_covered, 
+    const PrintObject &object, const SupportGeneratorLayersPtr &top_contacts, const std::vector<Polygons> &blockers_layers, std::vector<Polygons> &buildplate_covered,
     SupportGeneratorLayerStorage &layer_storage, std::vector<Polygons> &layer_support_areas) const
 {
     if (top_contacts.empty())
@@ -2660,6 +2682,10 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
         Polygons overhangs_projection_raw = union_(std::move(overhangs_projection));
         Polygons enforcers_projection_raw = union_(std::move(enforcers_projection));
 
+        // Expand blockers by half a support line so the complete bead stays outside the forbidden volume.
+        Polygons blockers;
+        if (size_t(layer_id) < blockers_layers.size() && !blockers_layers[layer_id].empty())
+            blockers = offset(blockers_layers[layer_id], float(m_support_params.support_material_flow.scaled_width() / 2 + SCALED_EPSILON));
         tbb::task_group task_group;
         const Polygons &overhangs_for_bottom_contacts = buildplate_only ? enforcers_projection_raw : overhangs_projection_raw;
         if (! overhangs_for_bottom_contacts.empty())
@@ -2684,13 +2710,13 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
         Polygons *layer_buildplate_covered = buildplate_covered.empty() ? nullptr : &buildplate_covered[layer_id];
         // Filtering the propagated support columns to two extrusions, overlapping by maximum 20%.
 //        float column_propagation_filtering_radius = scaled<float>(0.8 * 0.5 * (m_support_params.support_material_flow.spacing() + m_support_params.support_material_flow.width()));
-        task_group.run([&grid_params, &overhangs_projection, &overhangs_projection_raw, &layer, &layer_support_area, layer_buildplate_covered /* , column_propagation_filtering_radius */
+        task_group.run([&grid_params, &overhangs_projection, &overhangs_projection_raw, &layer, &layer_support_area, &blockers, layer_buildplate_covered /* , column_propagation_filtering_radius */
 #ifdef SLIC3R_DEBUG 
             , iRun, layer_id
 #endif /* SLIC3R_DEBUG */
             ] {
                 // buildplate_covered[layer_id] will be consumed here.
-                std::tie(layer_support_area, overhangs_projection) = project_support_to_grid(layer, grid_params, overhangs_projection_raw, layer_buildplate_covered
+                std::tie(layer_support_area, overhangs_projection) = project_support_to_grid(layer, grid_params, overhangs_projection_raw, blockers, layer_buildplate_covered
 #ifdef SLIC3R_DEBUG 
                     , iRun, layer_id, "general"
 #endif /* SLIC3R_DEBUG */
@@ -2702,12 +2728,12 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
         Polygons layer_support_area_enforcers;
         if (! enforcers_projection.empty())
             // Project the enforcers polygons downwards, don't trim them with the "buildplate only" polygons.
-            task_group.run([&grid_params, &enforcers_projection, &enforcers_projection_raw, &layer, &layer_support_area_enforcers
+            task_group.run([&grid_params, &enforcers_projection, &enforcers_projection_raw, &layer, &layer_support_area_enforcers, &blockers
 #ifdef SLIC3R_DEBUG 
                 , iRun, layer_id
 #endif /* SLIC3R_DEBUG */
             ]{
-                std::tie(layer_support_area_enforcers, enforcers_projection) = project_support_to_grid(layer, grid_params, enforcers_projection_raw, nullptr
+                std::tie(layer_support_area_enforcers, enforcers_projection) = project_support_to_grid(layer, grid_params, enforcers_projection_raw, blockers, nullptr
 #ifdef SLIC3R_DEBUG 
                     , iRun, layer_id, "enforcers"
 #endif /* SLIC3R_DEBUG */
