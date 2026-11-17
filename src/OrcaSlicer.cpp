@@ -52,13 +52,10 @@
 #include <iterator>
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/GCode/WipeTowerEstimate.hpp"
-#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
 #include <functional>
 #include "libslic3r/Arrange.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
-#include "slic3r/GUI/3DScene.hpp"
-#include "slic3r/GUI/GLShader.hpp"
 #include <cassert>
 #include <boost/filesystem/exception.hpp>
 #include <signal.h>
@@ -155,6 +152,8 @@ EM_JS(void, wasm_emit_error, (int code, const char *message), {
 
 #include "OrcaSlicer.hpp"
 #include "slic3r/GUI/PartPlate.hpp"
+#include "slic3r/Utils/MeshInspect.hpp"
+#include "slic3r/Utils/PaintCLI.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
@@ -177,9 +176,10 @@ using json = nlohmann::json;
 #ifdef WIN32
 #include "dev-utils/BaseException.h"
 #endif
-#include "slic3r/Utils/MeshInspect.hpp"
-#include "slic3r/Utils/PaintCLI.hpp"
 #include "slic3r/GUI/BitmapCache.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoBase.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include "slic3r/GUI/GLShader.hpp"
 #include "slic3r/GUI/OpenGLManager.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/Camera.hpp"
@@ -7142,7 +7142,17 @@ int CLI::run(int argc, char **argv)
                                 }
 #elif defined(__EMSCRIPTEN__)
                                 print->set_status_callback(wasm_status_callback);
-                                wasm_status_callback(PrintBase::SlicingStatus{4, warning.string.empty() ? "Slicing begins" : warning.string, 0, warning.string.empty() ? -1 : 0});
+                                {
+                                    std::string warning_text;
+                                    for (const auto& w : warnings) {
+                                        if (!warning_text.empty())
+                                            warning_text += "\n";
+                                        warning_text += w.string;
+                                    }
+                                    wasm_status_callback(PrintBase::SlicingStatus{
+                                        4, warning_text.empty() ? "Slicing begins" : warning_text,
+                                        0, warning_text.empty() ? -1 : 0});
+                                }
 #else
                                 BOOST_LOG_TRIVIAL(info) << "set print's callback to default_status_callback.";
                                 print->set_status_callback(default_status_callback);

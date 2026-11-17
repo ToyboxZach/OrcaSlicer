@@ -24,6 +24,7 @@
 #include <tbb/task_scheduler_observer.h>
 
 #include "Thread.hpp"
+#include "Utils.hpp"
 #include <cstring>
 
 namespace Slic3r {

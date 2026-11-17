@@ -1,6 +1,8 @@
 #include "Model.hpp"
 #include "calib.hpp"
+#if !defined(SLIC3R_HEADLESS)
 #include "Format/STEP.hpp"
+#endif
 #include "TriangleMesh.hpp"
 #include "Semver.hpp"
 #include "Format/OBJ.hpp"
@@ -20,7 +22,9 @@
 #include "AABBTreeIndirect.hpp"
 #include "BuildVolume.hpp"
 #include "TexturePainting.hpp"
+#if !defined(SLIC3R_HEADLESS)
 #include "Format/AssimpImport.hpp"
+#endif
 #include "ClipperUtils.hpp"
 #include "Exception.hpp"
 #include "ModelArrange.hpp"
@@ -442,6 +446,7 @@ Model Model::read_from_file(const std::string&                                  
             }
         }
     }
+#if !defined(SLIC3R_HEADLESS)
     else if (boost::algorithm::iends_with(input_file, ".glb") ||
              boost::algorithm::iends_with(input_file, ".gltf") ||
              boost::algorithm::iends_with(input_file, ".fbx")) {
@@ -459,6 +464,7 @@ Model Model::read_from_file(const std::string&                                  
             message = _L("The file format is incompatible and cannot be parsed.");
         }
     }
+#endif
     else if (boost::algorithm::iends_with(input_file, ".svg"))
         result = load_svg(input_file.c_str(), &model, message);
     //BBS: remove the old .amf.xml files

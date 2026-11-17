@@ -2960,12 +2960,12 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     // unchanged from before.
     const bool machine_frame_active = m_machine_frame_transform.is_active();
     auto compare_pos = [&](const auto &move) -> Vec3d {
-        Vec3d pos = move.position.cast<double>();
+        Vec3d pos = move.position.template cast<double>();
         if (!machine_frame_active)
             return pos;
         Vec3d extruder_off = Vec3d::Zero();
         if (size_t(move.extruder_id) < m_extruder_offsets.size())
-            extruder_off = m_extruder_offsets[move.extruder_id].cast<double>();
+            extruder_off = m_extruder_offsets[move.extruder_id].template cast<double>();
         // Strip plate + extruder offsets to recover the raw machine-frame
         // coordinate that was emitted into the G-code (see store_move_vertex).
         Vec3d machine(pos.x() - m_x_offset - extruder_off.x(),

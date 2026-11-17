@@ -119,7 +119,6 @@
 #include "GCode/ConflictChecker.hpp"
 
 #include <codecvt>
-#include "Format/STEP.hpp"
 #include "PlaceholderParser.hpp"
 #include "SurfaceCollection.hpp"
 #include "BeltBrim.hpp"
@@ -3305,7 +3304,7 @@ static bool make_printable_skirt_loop(
 {
     // Prefer the normal skirt around the global print footprint. If that would leave the printer or cross a model,
     // Don't add the skirt a
-    Polygons loops = offset(convex_hull, distance, ClipperLib::jtRound, float(scale_(0.1)));
+    Polygons loops = offset(convex_hull, distance, jtRound, float(scale_(0.1)));
     Geometry::simplify_polygons(loops, scale_(0.05), &loops);
     for (Polygon &candidate : loops) {
         if (skirt_loop_is_printable(candidate, printable_area, avoid_areas)) {
@@ -3314,7 +3313,7 @@ static bool make_printable_skirt_loop(
         }
     }
 
-    Polygons bed_loops = offset(printable_area, -bed_inset, ClipperLib::jtRound, float(scale_(0.1)));
+    Polygons bed_loops = offset(printable_area, -bed_inset, jtRound, float(scale_(0.1)));
     Geometry::simplify_polygons(bed_loops, scale_(0.05), &bed_loops);
     for (Polygon &candidate : bed_loops) {
         if (skirt_loop_is_printable(candidate, printable_area, avoid_areas)) {

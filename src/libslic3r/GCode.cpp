@@ -144,7 +144,6 @@ using namespace std::literals::string_view_literals;
 #include "Extruder.hpp"
 #include "ExtrusionEntityCollection.hpp"
 #include "FilamentMixer.hpp"
-#include "Format/STEP.hpp"
 #include "Model.hpp"
 #include "MultiNozzleUtils.hpp"
 #include "Slicing.hpp"

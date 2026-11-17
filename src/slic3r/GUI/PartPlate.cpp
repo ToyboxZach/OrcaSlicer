@@ -129,10 +129,10 @@
 #include "libslic3r/TriangleMesh.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GLModel.hpp"
-#include <nlohmann/json.hpp>
 
 class wxFont;
 #endif // !SLIC3R_HEADLESS
+#include <nlohmann/json.hpp>
 #include "PartPlate.hpp"
 using boost::optional;
 namespace fs = boost::filesystem;
@@ -4641,11 +4641,11 @@ bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* boundi
                         break;
                     }
                 }
-#endif
                 if (outside)
                     break;
             }
         }
+#endif
 
         if (!checked_config_regions && m_exclude_bounding_box.size() > 0) {
             const Polygon &hull = get_instance_hull();
@@ -6018,9 +6018,11 @@ void PartPlate::on_filament_added()
         // A new filament defaults onto the first extruder, so seed its volume value from
         // that extruder's flow type.
         int volume_type = static_cast<int>(NozzleVolumeType::nvtStandard);
+#ifndef SLIC3R_HEADLESS
         auto nozzle_volumes = wxGetApp().preset_bundle->project_config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
         if (nozzle_volumes && !nozzle_volumes->values.empty())
             volume_type = nozzle_volumes->values[0];
+#endif
         // Orca: never store the Hybrid marker as a per-filament value; on a Hybrid extruder
         // each filament still prints with a concrete flow, defaulting to Standard.
         if (volume_type == static_cast<int>(NozzleVolumeType::nvtHybrid))
@@ -7102,6 +7104,7 @@ int PartPlateList::select_plate(int index)
 	}
 
 	// With the other plates hidden, the view follows the selected plate.
+#ifndef SLIC3R_HEADLESS
 	if (previous_index != index && m_intialized && m_plater != nullptr && m_plater->is_view3D_shown() && wxGetApp().focus_mode()) {
 		Camera& camera = m_plater->get_camera();
 		Vec3d   target = camera.get_target();
@@ -7115,6 +7118,7 @@ int PartPlateList::select_plate(int index)
         ctx.index = index;
         fire_lifecycle_event(LifecycleEvent::PlateSelected, ctx);
     }
+#endif
 
 	return 0;
 }
@@ -8227,8 +8231,10 @@ bool PartPlateList::set_shapes(const Pointfs              &shape,
 	}
 	is_load_bedtype_textures = false; //reload textures
     is_load_extruder_only_area_textures = false; // reload textures
+#ifndef SLIC3R_HEADLESS
 	m_next_bedtype_texture = 0;
 	m_next_extruder_only_area_texture = 0;
+#endif
 	calc_bounding_boxes();
 #ifndef SLIC3R_HEADLESS
 	update_logo_texture_filename(texture_filename);

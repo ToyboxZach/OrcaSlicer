@@ -122,10 +122,18 @@ option(SLIC3R_MSVC_PDB          "Generate PDB files on MSVC in Release mode" 1)
 option(SLIC3R_RELATIVE_DEBUG_PATHS "Record a relative compilation directory in debug info (clang-cl)" 0)
 option(SLIC3R_ASAN              "Enable ASan on Clang and GCC" 0)
 
+if (EMSCRIPTEN)
+    set(SLIC3R_HEADLESS ON CACHE BOOL "" FORCE)
+endif ()
+if (SLIC3R_HEADLESS)
+    set(SLIC3R_CAD OFF CACHE BOOL "" FORCE)
+endif ()
+
 # Python stubgen module
 option(ORCA_BUILD_PYTHON_STUBGEN_MODULE "Build importable Python module for pybind11-stubgen" ON)
 set(ORCA_BUNDLED_UV_EXECUTABLE "" CACHE FILEPATH "Path to a uv executable to bundle for Python package installation. Leave empty to auto-download.")
 
+if (SLIC3R_GUI)
 # Auto-download uv if not provided by the user.
 # uv is pinned: the executable ships inside the signed app, so the build must
 # be reproducible and the download verified. To upgrade, bump ORCA_UV_VERSION
@@ -258,6 +266,7 @@ else()
     set(ORCA_BUNDLED_UV_EXECUTABLE_CONFIG "")
     set(ORCA_BUNDLED_UV_FILENAME "")
 endif()
+endif ()
 
 # If SLIC3R_FHS is 1 -> SLIC3R_DESKTOP_INTEGRATION is always 0, othrewise variable.
 CMAKE_DEPENDENT_OPTION(SLIC3R_DESKTOP_INTEGRATION "Allow performing desktop integration during runtime" 1 "NOT SLIC3R_FHS" 0)
@@ -716,10 +725,6 @@ set(EMSCRIPT_CXX_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pth
 set(EMSCRIPT_C_FLAGS "-DPRINT_STATISTICS_IN_CONSOLE -DSMALL_WASM_BINARY=1 -pthread -matomics -mbulk-memory -ferror-limit=0 -fwasm-exceptions" CACHE STRING "Emscripten C compile flags for OrcaSlicer")
 
 if (EMSCRIPTEN)
-    # Auto-enable headless mode for WASM builds
-    set(SLIC3R_HEADLESS ON CACHE BOOL "" FORCE)
-    set(SLIC3R_CAD OFF CACHE BOOL "" FORCE)
-    
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMSCRIPT_CXX_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EMSCRIPT_C_FLAGS}")
 
@@ -821,8 +826,12 @@ else()
   find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
 endif()
 
-# Find and configure Eigen3
-find_package(Eigen3 5.0.1 REQUIRED)
+# Emscripten otherwise searches only its sysroot, not the dependency prefix.
+if (EMSCRIPTEN)
+    find_package(Eigen3 5.0.1 REQUIRED CONFIG NO_CMAKE_FIND_ROOT_PATH)
+else ()
+    find_package(Eigen3 5.0.1 REQUIRED)
+endif ()
 
 add_library(boost_libs INTERFACE)
 add_library(boost_headeronly INTERFACE)
@@ -1096,6 +1105,7 @@ else()
   find_package(NLopt 1.4 REQUIRED)
 endif()
 
+if (SLIC3R_GUI)
 # Use bundled Python from deps instead of system Python
 set(_bundled_python_version "3.12.13")
 set(_bundled_python_abi "312")
@@ -1175,7 +1185,7 @@ add_library(pybind11_embed INTERFACE)
 target_link_libraries(pybind11_embed INTERFACE pybind11_headers Python3::Python)
 target_compile_definitions(pybind11_embed INTERFACE PYBIND11_SIMPLE_GIL_MANAGEMENT)
 add_library(pybind11::embed ALIAS pybind11_embed)
-
+endif ()
 
 if(SLIC3R_STATIC)
    # set(OPENVDB_USE_STATIC_LIBS ON)

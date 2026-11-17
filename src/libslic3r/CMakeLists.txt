@@ -612,10 +612,18 @@ if (SLIC3R_HEADLESS)
         Geometry/VoronoiUtilsCgal.hpp
         ObjColorUtils.cpp
         ObjColorUtils.hpp
+        TexturePainting.cpp
+        TexturePainting.hpp
+        TextureToColor/TextureToColor.cpp
+        TextureToColor/ColorUtils.cpp
         PNGReadWrite.cpp
         PNGReadWrite.hpp
         Format/SL1.cpp
         Format/SL1.hpp
+        Format/DRC.cpp
+        Format/DRC.hpp
+        Format/AssimpImport.cpp
+        Format/AssimpImport.hpp
         Shape/TextShape.cpp
         Shape/TextShape.hpp
         SLA/Clustering.cpp
