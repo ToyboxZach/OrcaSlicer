@@ -111,6 +111,8 @@ class Plater {
 public:
     void set_bed_position(Slic3r::Vec2d& pos){}
     void take_snapshot(const std::string& snapshot_name){}
+    bool is_loading_project() const { return false; }
+    void mark_plate_toolbar_image_dirty() {}
 private:
     Plater() {}
 };

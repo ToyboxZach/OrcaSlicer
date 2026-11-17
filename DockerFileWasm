@@ -125,11 +125,16 @@ RUN --mount=type=bind,source=.,target=/work,rw \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
       -DSLIC3R_GUI=OFF \
+      -DSLIC3R_HEADLESS=ON \
       -DSLIC3R_DESKTOP_INTEGRATION=OFF \
       -DSLIC3R_ENC_CHECK=OFF \
       -DSLIC3R_STATIC=ON \
       -DDEP_BUILD_DIR=/src/deps/build_wasm \
       -DCMAKE_PREFIX_PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local \
+      -DZLIB_INCLUDE_DIR:PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/include \
+      -DZLIB_LIBRARY:FILEPATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib/libz.a \
+      -DPNG_PNG_INCLUDE_DIR:PATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/include \
+      -DPNG_LIBRARY:FILEPATH=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib/libpng.a \
       -DBoost_ROOT=/src/deps/build_wasm/OrcaSlicer_dep/usr/local \
       -DBOOST_INCLUDEDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/include \
     -DBOOST_LIBRARYDIR=/src/deps/build_wasm/OrcaSlicer_dep/usr/local/lib \

@@ -605,7 +605,7 @@ if (SLIC3R_CAD)
         )
 endif ()
 
-# Headless builds exclude SLA/resin features and heavy dependencies (PNG, TextShape, VoronoiCGAL)
+# Headless builds exclude SLA/resin features and GUI-only dependencies.
 if (SLIC3R_HEADLESS)
     list(REMOVE_ITEM lisbslic3r_sources
         Geometry/VoronoiUtilsCgal.cpp
@@ -616,8 +616,6 @@ if (SLIC3R_HEADLESS)
         TexturePainting.hpp
         TextureToColor/TextureToColor.cpp
         TextureToColor/ColorUtils.cpp
-        PNGReadWrite.cpp
-        PNGReadWrite.hpp
         Format/SL1.cpp
         Format/SL1.hpp
         Format/DRC.cpp
@@ -632,8 +630,6 @@ if (SLIC3R_HEADLESS)
         SLA/ConcaveHull.hpp
         SLA/Hollowing.cpp
         SLA/Hollowing.hpp
-        SLA/IndexedMesh.cpp
-        SLA/IndexedMesh.hpp
         SLA/Pad.cpp
         SLA/Pad.hpp
         SLAPrint.cpp
@@ -669,6 +665,7 @@ if (SLIC3R_HEADLESS)
         MeshBoolean.cpp
         MeshBoolean.hpp
     )
+    find_package(PNG REQUIRED)
 endif ()
 
 if (APPLE)
@@ -953,6 +950,10 @@ if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
         PNG::PNG
         OpenSSL::Crypto
     )
+endif()
+
+if (SLIC3R_HEADLESS)
+    target_link_libraries(libslic3r PRIVATE PNG::PNG)
 endif()
 
 if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)

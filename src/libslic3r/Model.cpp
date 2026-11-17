@@ -3040,6 +3040,13 @@ size_t ModelVolume::split(unsigned int max_extruders, bool remap_paint)
 
 bool ModelVolume::repair(bool keep_painting, MeshRepairStats *stats_out, std::string *error, const std::function<void(int)> &progress)
 {
+#if defined(SLIC3R_HEADLESS)
+    if (stats_out)
+        *stats_out = {};
+    if (error)
+        *error = "Mesh repair is unavailable in a headless build.";
+    return false;
+#else
     TriangleMesh    mesh = this->mesh();
     MeshRepairStats stats;
     const bool      ok = repair_mesh(mesh, &stats, error, progress);
@@ -3056,6 +3063,7 @@ bool ModelVolume::repair(bool keep_painting, MeshRepairStats *stats_out, std::st
     this->set_new_unique_id();
     this->restore_painting(saved_painting);
     return true;
+#endif
 }
 
 void ModelVolume::translate(const Vec3d& displacement)

@@ -312,12 +312,13 @@ if (WIN32)
             VERBATIM
         )
     endif ()
-    # copy libpython to the bin folder for Windows
-    add_custom_command(TARGET OrcaSlicer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:OrcaSlicer>/python"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "$<TARGET_FILE_DIR:OrcaSlicer>/python"
-        COMMENT "Copying Python runtime into the build tree"
-        VERBATIM)
+    if (SLIC3R_GUI)
+        add_custom_command(TARGET OrcaSlicer POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:OrcaSlicer>/python"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "$<TARGET_FILE_DIR:OrcaSlicer>/python"
+            COMMENT "Copying Python runtime into the build tree"
+            VERBATIM)
+    endif ()
 
     if (CMAKE_CONFIGURATION_TYPES)
         # Multi-config generators (Visual Studio, Ninja Multi-Config): copy per config.
@@ -392,11 +393,13 @@ else ()
         COMMAND ln -sfn "${SLIC3R_RESOURCES_DIR}" "${BIN_RESOURCES_DIR}"
         COMMENT "Symlinking the resources directory into the build tree"
         VERBATIM)
-    add_custom_command(TARGET OrcaSlicer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${BIN_DIR}/python"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "${BIN_DIR}/python"
-        COMMENT "Copying Python runtime into the build tree"
-        VERBATIM)
+    if (SLIC3R_GUI)
+        add_custom_command(TARGET OrcaSlicer POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "${BIN_DIR}/python"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_PREFIX_PATH}/libpython" "${BIN_DIR}/python"
+            COMMENT "Copying Python runtime into the build tree"
+            VERBATIM)
+    endif ()
     # Stage uv next to the binary for the build-tree/.app flows, which never
     # run install() -- see the layout map above; lookup is bundled_uv_path().
     if(ORCA_BUNDLED_UV_EXECUTABLE AND EXISTS "${ORCA_BUNDLED_UV_EXECUTABLE}")
@@ -428,7 +431,9 @@ if (WIN32)
         install(TARGETS OrcaSlicer_app_gui RUNTIME DESTINATION ".")
     endif ()
     install(FILES ${output_dlls_${build_type}} DESTINATION ".")
-    install(DIRECTORY "${CMAKE_PREFIX_PATH}/libpython/" DESTINATION "python")
+    if (SLIC3R_GUI)
+        install(DIRECTORY "${CMAKE_PREFIX_PATH}/libpython/" DESTINATION "python")
+    endif ()
 else ()
     if (APPLE)
     else()

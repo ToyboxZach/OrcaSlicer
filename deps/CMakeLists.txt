@@ -358,13 +358,28 @@ if(FLATPAK)
     find_package(CURL)
 endif()
 
+set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")
+set(DEP_EMSCRIPT_C_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C release flags")
+if (EMSCRIPTEN)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEP_EMSCRIPT_C_FLAGS_RELEASE}")
+    # Propagate flags to all orcaslicer_add_cmake_project ExternalProject children.
+    set(DEP_CMAKE_OPTS
+        "-DCMAKE_C_FLAGS_RELEASE:STRING=${CMAKE_C_FLAGS_RELEASE}"
+        "-DCMAKE_CXX_FLAGS_RELEASE:STRING=${CMAKE_CXX_FLAGS_RELEASE}"
+    )
+endif ()
+
 set(ZLIB_PKG "")
 if (NOT ZLIB_FOUND)
     include(ZLIB/ZLIB.cmake)
     set(ZLIB_PKG dep_ZLIB)
 endif ()
 set(PNG_PKG "")
-if (NOT PNG_FOUND AND NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
+if (SLIC3R_HEADLESS AND NOT EMSCRIPTEN)
+    find_package(PNG)
+endif ()
+if (EMSCRIPTEN OR NOT PNG_FOUND)
     include(PNG/PNG.cmake)
     set(PNG_PKG dep_PNG)
 endif ()
@@ -377,18 +392,6 @@ endif ()
 
 # The order of includes respects the dependencies between libraries
 set(DEP_Boost_COMPONENTS system iostreams filesystem thread log locale regex date_time)
-
-set(DEP_EMSCRIPT_CXX_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C++ release flags")
-set(DEP_EMSCRIPT_C_FLAGS_RELEASE "-pthread -fwasm-exceptions -matomics -mbulk-memory" CACHE STRING "Emscripten deps C release flags")
-if (EMSCRIPTEN)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${DEP_EMSCRIPT_CXX_FLAGS_RELEASE}")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${DEP_EMSCRIPT_C_FLAGS_RELEASE}")
-    # Propagate flags to all orcaslicer_add_cmake_project ExternalProject children.
-    set(DEP_CMAKE_OPTS
-        "-DCMAKE_C_FLAGS_RELEASE:STRING=${CMAKE_C_FLAGS_RELEASE}"
-        "-DCMAKE_CXX_FLAGS_RELEASE:STRING=${CMAKE_CXX_FLAGS_RELEASE}"
-    )
-endif ()
 
 include(Boost/Boost.cmake)
 

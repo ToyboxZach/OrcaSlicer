@@ -3481,7 +3481,7 @@ void PrintObjectSupportMaterial::trim_support_layers_by_object(
                             append_print_object_polygons_relative_to(polygons_trimming, object, *other_object, other_layer_trimming);
                         }
 
-                        if (! m_slicing_params.soluble_interface && m_object_config->thick_bridges) {
+                        if (!m_slicing_params.zero_gap_interface_top && m_object_config->thick_bridges) {
                             // Thick bridge regions extend below the nominal object layer. Include those sibling bridge masks as well,
                             // matching the existing same-object trimming behavior above.
                             for (; j < other_object->layers().size(); ++j) {

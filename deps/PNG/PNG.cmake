@@ -1,8 +1,16 @@
+if (EMSCRIPTEN AND ZLIB_PKG)
+    set(PNG_ZLIB_ARGS
+        -DZLIB_INCLUDE_DIR:PATH=${DESTDIR}/include
+        -DZLIB_LIBRARY:FILEPATH=${DESTDIR}/lib/libz.a
+    )
+endif ()
+
 orcaslicer_add_cmake_project(PNG
         URL https://github.com/glennrp/libpng/archive/refs/tags/v1.6.59.zip
         URL_HASH SHA256=6fd97a1e5e2ac55cec0a538a9800a351eb3844086736291844ebd12db72ba433
         DEPENDS ${ZLIB_PKG}
         CMAKE_ARGS
+            ${PNG_ZLIB_ARGS}
             -DPNG_SHARED=OFF
             -DPNG_STATIC=ON
             -DPNG_PREFIX=prusaslicer_

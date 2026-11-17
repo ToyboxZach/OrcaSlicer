@@ -844,6 +844,54 @@ TEST_CASE("Caged external overhangs are slowed when printed by object or through
     REQUIRE(*std::max_element(feed_rates.begin(), feed_rates.end()) < caged_slow_speed * MM_PER_MIN);
 }
 
+TEST_CASE("Detected 50 percent overhang regions have balanced markers", "[ExtrusionProcessor]")
+{
+    const auto [key, value] = GENERATE(table<const char *, const char *>({
+        {"fan_speedup_time", "0"},
+        {"fan_speedup_time", "0.5"},
+        {"max_volumetric_extrusion_rate_slope", "10"},
+    }));
+    INFO(key << " = " << value);
+    DynamicPrintConfig config = caged_overhang_config("classic");
+    config.set_deserialize_strict(key, value);
+    Print print;
+    Model model;
+    init_print(std::vector<TriangleMesh>{caged_overhang_mesh()}, print, model, config, nullptr, false);
+
+    bool in_50 = false;
+    size_t starts_50 = 0, moves_50 = 0;
+    GCodeReader reader;
+    reader.parse_buffer(gcode(print), [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
+        const std::string &raw = line.raw();
+        if (raw == ";O50") {
+            CHECK_FALSE(in_50);
+            in_50 = true;
+            ++starts_50;
+        } else if (raw == ";X50") {
+            CHECK(in_50);
+            in_50 = false;
+        } else if (line.extruding(self)) {
+            if (in_50)
+                ++moves_50;
+        }
+    });
+    CHECK_FALSE(in_50);
+    CHECK(starts_50 > 0);
+    CHECK(moves_50 > 0);
+}
+
+TEST_CASE("Overhang markers are absent when overhang detection is disabled", "[ExtrusionProcessor]")
+{
+    DynamicPrintConfig config = caged_overhang_config("classic");
+    config.set_deserialize_strict({{"enable_overhang_speed", "0"}, {"enable_overhang_bridge_fan", "0"}});
+    Print print;
+    Model model;
+    init_print(std::vector<TriangleMesh>{caged_overhang_mesh()}, print, model, config, nullptr, false);
+
+    const std::string output = gcode(print);
+    CHECK(output.find(";O50\n") == std::string::npos);
+}
+
 TEST_CASE("Benchmark caged overhang interior sampling", "[ExtrusionProcessor][!benchmark]"){
     const char* wall_generator = GENERATE("classic", "arachne");
 
