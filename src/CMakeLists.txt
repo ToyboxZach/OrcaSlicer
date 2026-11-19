@@ -170,6 +170,8 @@ else ()
     add_executable(OrcaSlicer OrcaSlicer.cpp OrcaSlicer.hpp)
 endif ()
 
+target_sources(OrcaSlicer PRIVATE slic3r/Utils/TBFixes.cpp slic3r/Utils/TBFixes.hpp)
+
 if (NOT SLIC3R_GUI)
     target_sources(OrcaSlicer PRIVATE slic3r/Utils/MeshInspect.cpp slic3r/Utils/PaintCLI.cpp)
 endif ()

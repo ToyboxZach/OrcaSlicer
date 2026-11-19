@@ -12839,6 +12839,12 @@ CLIActionsConfigDef::CLIActionsConfigDef()
                      "the support check.");
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("allow_tb_fixes", coBool);
+    def->label = L("Allow TB fixes");
+    def->tooltip = L("Allow the CLI to lower objects with an empty first layer by up to 200 mm. "
+                     "Geometry below the build plate is removed.");
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("normative_check", coBool);
     def->label = L("Normative check");
     def->tooltip = L("Check the normative items.");

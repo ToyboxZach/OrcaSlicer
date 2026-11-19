@@ -2397,7 +2397,8 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
         // Z=0 on the tilted belt surface.
         if (layers_to_print.size() == 1u) {
             if (!has_extrusions && !skip_empty_first_layer)
-                throw Slic3r::SlicingError(_(L("One object has an empty first layer and can't be printed. Please Cut the bottom or enable supports.")), object.id().id);
+                throw Slic3r::SlicingError(_(L("One object has an empty first layer and can't be printed. Please Cut the bottom or enable supports.")),
+                                           object.id().id, Slic3r::SlicingError::Reason::EmptyFirstLayer);
         }
 
         // In case there are extrusions on this layer, check there is a layer to lay it on.

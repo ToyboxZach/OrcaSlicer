@@ -31,12 +31,16 @@ SLIC3R_DERIVE_EXCEPTION(PlaceholderParserError, RuntimeError);
 class SlicingError : public Exception 
 {
 public:
+    enum class Reason { Other, EmptyFirstLayer };
     using Exception::Exception;
-    SlicingError(std::string const &msg, size_t objectId) : Exception(msg), objectId_(objectId) {}
+    SlicingError(std::string const &msg, size_t objectId, Reason reason = Reason::Other)
+        : Exception(msg), objectId_(objectId), reason_(reason) {}
     size_t objectId() const { return objectId_; }
+    Reason reason() const { return reason_; }
 
 private:
     size_t objectId_ = 0;
+    Reason reason_ = Reason::Other;
 };
 
 class SlicingErrors : public Exception

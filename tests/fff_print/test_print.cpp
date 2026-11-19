@@ -1563,6 +1563,7 @@ TEST_CASE("Slicing errors are reported per object with the object's name", "[Pri
         FAIL("slicing did not report the empty first layer");
     } catch (const SlicingErrors &errors) {
         REQUIRE(errors.errors_.size() == 1);
+        CHECK(errors.errors_.front().reason() == SlicingError::Reason::EmptyFirstLayer);
         message = print.slicing_errors_message(errors);
     }
     CHECK(message.rfind("floating cube: ", 0) == 0);

@@ -154,6 +154,7 @@ EM_JS(void, wasm_emit_error, (int code, const char *message), {
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/Utils/MeshInspect.hpp"
 #include "slic3r/Utils/PaintCLI.hpp"
+#include "slic3r/Utils/TBFixes.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
@@ -6486,6 +6487,8 @@ int CLI::run(int argc, char **argv)
             no_check = m_config.opt_bool(opt_key);
         }else if(opt_key=="strict"){
             //already read into sliced_info at the start of run()
+        }else if(opt_key=="allow_tb_fixes"){
+            // Read directly from m_config when slicing, independent of argument order.
         //} else if (opt_key == "export_gcode" || opt_key == "export_sla" || opt_key == "slice") {
         } else if (opt_key == "normative_check") {
             //already processed before
@@ -7162,29 +7165,48 @@ int CLI::run(int argc, char **argv)
                                 const PrintConfig& print_config = print_fff->config();
                                 Model::setExtruderParams(m_print_config, filament_count);
                                 Model::setPrintSpeedTable(m_print_config, print_config);
-                                if (load_slicedata) {
-                                    std::string plate_dir = load_slice_data_dir+"/"+std::to_string(index+1);
-                                    int ret = print->load_cached_data(plate_dir);
-                                    if (ret) {
-                                        BOOST_LOG_TRIVIAL(warning) << "plate "<< index+1<< ": load Slicing data error, ret=" << ret;
-                                        BOOST_LOG_TRIVIAL(warning) << "plate "<< index+1<< ": switch normal slicing";
-                                        print->process();
-                                    }
-                                    else {
-                                        BOOST_LOG_TRIVIAL(info) << "plate "<< index+1<< ": load cached data success, go on.";
+                                TBFixes::FirstLayerRetry first_layer_retry;
+                                bool retried = false;
+                                for (;;) {
+                                    const size_t warnings_before = g_slicing_warnings.size();
+                                    try {
+                                        if (load_slicedata && !retried) {
+                                            std::string plate_dir = load_slice_data_dir+"/"+std::to_string(index+1);
+                                            int ret = print->load_cached_data(plate_dir);
+                                            if (ret) {
+                                                BOOST_LOG_TRIVIAL(warning) << "plate "<< index+1<< ": load Slicing data error, ret=" << ret;
+                                                BOOST_LOG_TRIVIAL(warning) << "plate "<< index+1<< ": switch normal slicing";
+                                                print->process();
+                                            }
+                                            else {
+                                                BOOST_LOG_TRIVIAL(info) << "plate "<< index+1<< ": load cached data success, go on.";
 #if defined(__linux__) || defined(__LINUX__)
-                                        if (g_cli_callback_mgr.is_started()) {
-                                            PrintBase::SlicingStatus slicing_status{69, "Cache data loaded"};
-                                            cli_status_callback(slicing_status);
-                                        }
+                                                if (g_cli_callback_mgr.is_started()) {
+                                                    PrintBase::SlicingStatus slicing_status{69, "Cache data loaded"};
+                                                    cli_status_callback(slicing_status);
+                                                }
 #endif
-                                        print->process(nullptr, true);
-                                        BOOST_LOG_TRIVIAL(info) << "plate "<< index+1<< ": finished print::process.";
+                                                print->process(nullptr, true);
+                                                BOOST_LOG_TRIVIAL(info) << "plate "<< index+1<< ": finished print::process.";
+                                            }
+                                        }
+                                        else {
+                                            print->process(&time_using_cache);
+                                            BOOST_LOG_TRIVIAL(info) << "print::process: first time_using_cache is " << time_using_cache << " secs.";
+                                        }
+                                        break;
+                                    } catch (const Slic3r::SlicingErrors &errors) {
+                                        if (printer_technology != ptFFF || !m_config.opt_bool("allow_tb_fixes") ||
+                                            !first_layer_retry.try_fix(errors, *print_fff, model, new_print_config,
+                                                                       g_slicing_warnings, warnings_before,
+                                                                       [&](const std::string &object, size_t instance, double lowered_mm) {
+                                                                           cli_record_warning(sliced_info, "auto_cut_empty_first_layer",
+                                                                                              {{"plate_id", index + 1}, {"object", object},
+                                                                                               {"instance", instance}, {"lowered_mm", lowered_mm}});
+                                                                       }))
+                                            throw;
+                                        retried = true;
                                     }
-                                }
-                                else {
-                                    print->process(&time_using_cache);
-                                    BOOST_LOG_TRIVIAL(info) << "print::process: first time_using_cache is " << time_using_cache << " secs.";
                                 }
                                 if (printer_technology == ptFFF) {
                                     // Read the engine's final grouping back onto the plate so an exported

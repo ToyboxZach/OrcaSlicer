@@ -191,6 +191,12 @@ All updated build instructions for Windows, macOS, and Linux are now available o
 
 Please refer to the wiki to ensure you're following the latest and most accurate steps for your platform.
 
+# Command-line slicing
+
+With `--allow-tb-fixes`, the CLI attempts to lower an object with an empty first layer and re-slice, up to
+200 mm per instance. This can remove geometry below the build plate; each adjustment is reported on stderr.
+If the retry cannot produce a printable first layer within the limit, slicing fails. The fix is disabled by default.
+
 # Klipper Note
 
 If you're running Klipper, it's recommended to add the following configuration to your `printer.cfg` file.
