@@ -136,6 +136,30 @@ double trajectory_length(const WipeTrajectory &trajectory)
     return length;
 }
 
+TEST_CASE("Wipe start comments include overhang percentage", "[Wipe][Regression]")
+{
+    DynamicPrintConfig config = wipe_config("classic", false);
+    config.set_deserialize_strict({{"enable_overhang_speed", "1"}});
+    const std::string output = slice({make_cube(10., 10., 1.)}, config);
+    const std::string &start_tag = GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start);
+
+    size_t wipe_starts = 0;
+    GCodeReader parser;
+    parser.parse_buffer(output, [&](GCodeReader &, const GCodeReader::GCodeLine &line) {
+        const std::string_view comment = line.comment();
+        if (comment.find(start_tag) != 0)
+            return;
+
+        ++wipe_starts;
+        const size_t overhang_pos = comment.find(" OH:");
+        REQUIRE(overhang_pos != std::string_view::npos);
+        CHECK(comment.find('%', overhang_pos) != std::string_view::npos);
+    });
+
+    REQUIRE(wipe_starts > 0);
+    CHECK(wipe_trajectories(output).size() == wipe_starts);
+}
+
 } // namespace
 
 TEST_CASE("Wipe retraction preserves fractional speed with inward wipe disabled", "[Wipe][Regression]")

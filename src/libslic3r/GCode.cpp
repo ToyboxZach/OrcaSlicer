@@ -664,9 +664,10 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
     }
 
     // Orca: rebuild the stored wipe path while preserving Polyline's boundary deduplication.
-    void Wipe::update_path(const ExtrusionPaths &paths, bool reverse)
+    void Wipe::update_path(const ExtrusionPaths &paths, bool reverse, float overhang_percent)
     {
         reset_path();
+        this->overhang_percent = overhang_percent;
         for (const ExtrusionPath& extrusion_path : paths)
             path.append(extrusion_path.polyline.to_polyline());
         if (reverse)
@@ -718,7 +719,10 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 }
 
                 // add tag for processor
-                gcode += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start) + "\n";
+                std::ostringstream wipe_start;
+                wipe_start << ';' << GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start)
+                           << " OH:" << std::fixed << std::setprecision(1) << this->overhang_percent << "%\n";
+                gcode += wipe_start.str();
                 //BBS: don't need to enable cooling makers when this is the last wipe. Because no more cooling layer will clean this "_WIPE"
                 //Softfever:
                 std::string cooling_mark = "";
@@ -8773,7 +8777,7 @@ std::string GCode::extrude_loop(const ExtrusionLoop&                       loop_
 
     // Orca: store loop paths in print order because inward offsets use this orientation.
     if (m_wipe.enable && FILAMENT_CONFIG(wipe)) {
-        m_wipe.update_path(paths);
+        m_wipe.update_path(paths, false, m_last_extrusion_overhang_percent);
 
         // A loop's role is its first path's role. An overhanging start must
         // not hide ordinary external-wall segments elsewhere in the loop.
@@ -8869,7 +8873,7 @@ std::string GCode::extrude_multi_path(const ExtrusionMultiPath& multipath, const
 
     // Orca: multipath wipes retrace the extrusion in reverse order.
     if (m_wipe.enable && FILAMENT_CONFIG(wipe))
-        m_wipe.update_path(multipath.paths, true);
+        m_wipe.update_path(multipath.paths, true, m_last_extrusion_overhang_percent);
 
     return gcode;
 }
@@ -8901,6 +8905,7 @@ std::string GCode::extrude_path(const ExtrusionPath& path, const std::string& de
     if (m_wipe.enable && FILAMENT_CONFIG(wipe)) {
         m_wipe.reset_path();
         m_wipe.path = path.polyline.to_polyline();
+        m_wipe.overhang_percent = m_last_extrusion_overhang_percent;
         if (is_tree(this->config().support_type) && is_support(path.role())) {
             if ((m_wipe.path.first_point() - m_wipe.path.last_point()).cast<double>().norm() > scale_(0.2)) {
                 double min_dist = scale_(0.2);
@@ -9317,6 +9322,7 @@ ExtrusionPaths GCode::belt_cut_at_band_edges(const ExtrusionPath &path, std::vec
 std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &path_description, double speed)
 {
     std::string gcode;
+    m_last_extrusion_overhang_percent = 0.f;
 
     const std::string  bridge_description = is_bridge(path.role()) ? path_description + " (bridge)" : std::string();
     const std::string &description        = bridge_description.empty() ? path_description : bridge_description;
@@ -9786,6 +9792,12 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
                         return (previous.overlap <= fan_overlap_threshold) != (current.overlap <= fan_overlap_threshold);
                     }) != new_points.end();
             }
+    }
+
+    if (new_points.size() >= 2) {
+        // The final extrusion move uses the estimate for the segment ending at the last point.
+        const float overlap = new_points[new_points.size() - 2].geometric_overlap;
+        m_last_extrusion_overhang_percent = std::clamp((1.f - overlap) * 100.f, 0.f, 100.f);
     }
 
     double F = speed * 60;  // convert mm/sec to mm/min
