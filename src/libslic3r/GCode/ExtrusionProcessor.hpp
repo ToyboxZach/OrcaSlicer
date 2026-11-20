@@ -485,6 +485,7 @@ struct ProcessedPoint
     Point3 p;
     float speed = 1.0f;
     float overlap = 1.0f;
+    //TB ANNOTATIONS
     // Minimum endpoint overlap for the following segment, without curled-edge compensation.
     float geometric_overlap = 1.0f;
 };
@@ -709,6 +710,7 @@ public:
             
             float overlap = std::min(1 - (curr.distance+artificial_distance_to_curled_lines) * width_inv, 1 - (next.distance+artificial_distance_to_curled_lines) * width_inv);
 
+            //TB ANNOTATIONS
             const float geometric_overlap = 1.f - std::max(curr.distance, next.distance) * width_inv;
             processed_points.push_back({Point3(scaled(curr.position)), extrusion_speed, overlap, geometric_overlap});
         }

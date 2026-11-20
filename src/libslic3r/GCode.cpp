@@ -664,6 +664,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
     }
 
     // Orca: rebuild the stored wipe path while preserving Polyline's boundary deduplication.
+    //TB ANNOTATIONS
     void Wipe::update_path(const ExtrusionPaths &paths, bool reverse, float overhang_percent)
     {
         reset_path();
@@ -719,6 +720,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 }
 
                 // add tag for processor
+                //TB ANNOTATIONS
                 std::ostringstream wipe_start;
                 wipe_start << ';' << GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start)
                            << " OH:" << std::fixed << std::setprecision(1) << this->overhang_percent << "\n";
@@ -2401,6 +2403,7 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
         // Z=0 on the tilted belt surface.
         if (layers_to_print.size() == 1u) {
             if (!has_extrusions && !skip_empty_first_layer)
+                //TB PRINT_FIXES
                 throw Slic3r::SlicingError(_(L("One object has an empty first layer and can't be printed. Please Cut the bottom or enable supports.")),
                                            object.id().id, Slic3r::SlicingError::Reason::EmptyFirstLayer);
         }
@@ -3130,6 +3133,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 // free functions called by GCode::_do_export()
 namespace DoExport {
     static void init_gcode_processor(const PrintConfig& config, GCodeProcessor& processor,
+                                     //TB OPTIMIZATIONS
                                      const std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase>& nozzle_group_result,
                                      bool collect_preview_data)
     {
@@ -3138,6 +3142,7 @@ namespace DoExport {
         // the post-stream result-field handover at the end of do_export, which gates the richer
         // change-time model and must stay after the stream.
         processor.initialize_from_context(nozzle_group_result);
+        //TB OPTIMIZATIONS
         processor.set_collect_preview_data(collect_preview_data);
         if (collect_preview_data)
             processor.initialize_result_moves();
@@ -3427,6 +3432,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     // init as filament map
     update_layer_related_config(0);
 
+//TB OPTIMIZATIONS
 #ifdef SLIC3R_HEADLESS
     constexpr bool collect_preview_data = false;
 #else
@@ -8777,6 +8783,7 @@ std::string GCode::extrude_loop(const ExtrusionLoop&                       loop_
 
     // Orca: store loop paths in print order because inward offsets use this orientation.
     if (m_wipe.enable && FILAMENT_CONFIG(wipe)) {
+        //TB ANNOTATIONS
         m_wipe.update_path(paths, false, m_last_extrusion_overhang_percent);
 
         // A loop's role is its first path's role. An overhanging start must
@@ -8873,6 +8880,7 @@ std::string GCode::extrude_multi_path(const ExtrusionMultiPath& multipath, const
 
     // Orca: multipath wipes retrace the extrusion in reverse order.
     if (m_wipe.enable && FILAMENT_CONFIG(wipe))
+        //TB ANNOTATIONS
         m_wipe.update_path(multipath.paths, true, m_last_extrusion_overhang_percent);
 
     return gcode;
@@ -8905,6 +8913,7 @@ std::string GCode::extrude_path(const ExtrusionPath& path, const std::string& de
     if (m_wipe.enable && FILAMENT_CONFIG(wipe)) {
         m_wipe.reset_path();
         m_wipe.path = path.polyline.to_polyline();
+        //TB ANNOTATIONS
         m_wipe.overhang_percent = m_last_extrusion_overhang_percent;
         if (is_tree(this->config().support_type) && is_support(path.role())) {
             if ((m_wipe.path.first_point() - m_wipe.path.last_point()).cast<double>().norm() > scale_(0.2)) {
@@ -9322,6 +9331,7 @@ ExtrusionPaths GCode::belt_cut_at_band_edges(const ExtrusionPath &path, std::vec
 std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &path_description, double speed)
 {
     std::string gcode;
+    //TB ANNOTATIONS
     m_last_extrusion_overhang_percent = 0.f;
 
     const std::string  bridge_description = is_bridge(path.role()) ? path_description + " (bridge)" : std::string();
@@ -9794,6 +9804,7 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
             }
     }
 
+    //TB ANNOTATIONS
     if (new_points.size() >= 2) {
         // The final extrusion move uses the estimate for the segment ending at the last point.
         const float overlap = new_points[new_points.size() - 2].geometric_overlap;
@@ -9987,6 +9998,7 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
                                      ironing_fan_speed >= 0 && path.role() == erIroning);
     };
 
+    //TB ANNOTATIONS
     bool overhang_25 = false;
     bool overhang_50 = false;
     auto mark_overhang = [&gcode, &overhang_25, &overhang_50](bool at_least_25, bool at_least_50) {
@@ -10086,6 +10098,7 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
 
                 apply_role_based_fan_speed();
             }
+            //TB ANNOTATIONS
             if (!path.is_force_no_extrusion() && new_points.size() > 1) {
                 // Without emitted splits, only mark a threshold when it applies to the whole path.
                 const auto end = new_points.end() - 1;
@@ -10269,6 +10282,7 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
             const double line_length = (p - prev).norm();
             if(line_length < EPSILON)
                 continue;
+            //TB ANNOTATIONS
             if (!path.is_force_no_extrusion())
                 mark_overhang(pre_processed_point.geometric_overlap <= 0.75f,
                               pre_processed_point.geometric_overlap <= 0.5f);
@@ -10369,6 +10383,7 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
 
         }
     }
+    //TB ANNOTATIONS
     mark_overhang(false, false);
     if (m_enable_cooling_markers) {
             gcode += ";_EXTRUDE_END\n";

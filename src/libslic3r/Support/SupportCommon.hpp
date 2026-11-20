@@ -81,6 +81,7 @@ void trim_support_layers_by_exclusion_volumes(
     const SupportGeneratorLayersPtr       &intermediate_layers,
     const SupportGeneratorLayersPtr       &interface_layers,
     const SupportGeneratorLayersPtr       &base_interface_layers);
+//TB SUPPORT_FIXES
 // Support generation is performed per PrintObject in that object's local coordinate system.
 // In by-layer printing, however, all objects occupy the plate at the same time and supports must not be routed through sibling objects.
 // These helpers expose that cross-object occupancy while preserving the local-coordinate contract expected by support generators.

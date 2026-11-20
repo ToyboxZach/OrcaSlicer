@@ -878,6 +878,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
             // additional_time is attributed to the first block matching target_move_type
             // (EMoveType::Noop matches any block, i.e. the first processed block).
+            //TB OPTIMIZATIONS
             void calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, bool collect_preview_data, size_t keep_last_n_blocks = 0, float additional_time = 0.0f, EMoveType target_move_type = EMoveType::Noop, bool is_final = false);
         };
 
@@ -1235,6 +1236,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         using MassLocator = std::function<MassLocation(const Vec3d &point, bool support)>;
 
     private:
+        //TB OPTIMIZATIONS
         struct ValidationMove
         {
             // Low-memory export retains only data required by printable-area validation.
@@ -1413,6 +1415,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::vector<std::pair<unsigned int, unsigned int>> m_actual_speed_id_map;
         UsedFilaments m_used_filaments;
 
+        //TB OPTIMIZATIONS
         // Full move records are needed only by the G-code preview. When disabled, retractions,
         // travels, wipes, tool changes, seams, and custom-marker moves are not retained at all;
         // only compact extrusion endpoints survive until printable-area validation completes.
@@ -1465,6 +1468,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         void initialize_from_context(const std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase>& nozzle_group_result) {
             m_nozzle_group_result = nozzle_group_result;
         }
+        //TB OPTIMIZATIONS
         void set_collect_preview_data(bool collect) { m_collect_preview_data = collect; }
 
         DynamicConfig export_config_for_render() const;

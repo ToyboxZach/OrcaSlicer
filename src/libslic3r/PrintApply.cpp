@@ -2005,6 +2005,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                         size_t extruder_num = new_full_config.option<ConfigOptionFloats>("nozzle_diameter")->size();
                         update_apply_status(status == PrintBase::APPLY_STATUS_INVALIDATED);
                         belt_instances_shifted = true;
+                        //TB SUPPORT_FIXES
                         // Support generation now depends on sibling object positions for by-layer multi-object prints.
                         // If one object copy moves, every object's support masks may need to change because sibling slices are used as blockers.
                         // Do not do this for by-object printing: those supports are generated for sequential object printing and should stay independent.

@@ -190,6 +190,7 @@ void trim_support_layers_by_exclusion_volumes(
 //#define SUPPORT_SURFACES_OFFSET_PARAMETERS jtMiter, 1.5
 #define SUPPORT_SURFACES_OFFSET_PARAMETERS jtSquare, 0.
 
+//TB SUPPORT_FIXES
 bool support_material_consider_other_objects(const PrintObject &object)
 {
     // By-object printing is sequential: a sibling object may not exist yet (or may already be finished) when this object's support is printed.
@@ -650,6 +651,7 @@ SupportGeneratorLayersPtr generate_raft_base(
             // BBS: if first layer of support is intersected with object island, it must have the same function as brim unless in nobrim mode.
             // brim_object_gap is changed to 0 by default, it's no longer appropriate to use it to determine the gap of first layer support.
             trimming = offset(object.layers().front()->lslices, (float) scale_(support_params.gap_xy_first_layer), SUPPORT_SURFACES_OFFSET_PARAMETERS);
+//TB SUPPORT_FIXES
 
             if (support_material_consider_other_objects(object)) {
                 // The first support layer is intentionally expanded like a support brim/flange for bed adhesion.

@@ -18,6 +18,7 @@ struct PerExtruderAdjustments;
 // A standalone G-code filter, to control cooling of the print.
 // The G-code is processed per layer. Once a layer is collected, fan start / stop commands are edited
 // and the print is modified to stretch over a minimum layer time.
+//TB ANNOTATIONS
 // Slowed layers receive a ;C<seconds> comment with the pre-slowdown estimate,
 // including any support layers buffered with the object layer.
 //
@@ -36,6 +37,7 @@ public:
 private:
 	CoolingBuffer& operator=(const CoolingBuffer&) = delete;
     std::vector<PerExtruderAdjustments> parse_layer_gcode(const std::string &gcode, std::vector<float> &current_pos) const;
+    //TB ANNOTATIONS
     float       calculate_layer_slowdown(std::vector<PerExtruderAdjustments> &per_extruder_adjustments, float &original_layer_time);
     // Apply slow down over G-code lines stored in per_extruder_adjustments, enable fan if needed.
     // Returns the adjusted G-code.

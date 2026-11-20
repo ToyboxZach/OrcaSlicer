@@ -3281,6 +3281,7 @@ bool Print::has_support_material() const
     return false;
 }
 
+//TB PRINT_FIXES
 static bool skirt_loop_is_printable(const Polygon &loop, const Polygon &printable_area, const Polygons &avoid_areas)
 {
     if (loop.points.size() < 3 || printable_area.points.size() < 3)
@@ -3522,6 +3523,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         obj->clear_shared_object();
 
     //add the print_object share check logic
+    //TB SUPPORT_FIXES
     auto is_print_object_the_same = [this](const PrintObject* object1, const PrintObject* object2) -> bool{
         // Cross-object support generation and support deduplication are placement-dependent:
         // sibling object blockers and overlap ownership are translated by PrintInstance::shift.
@@ -3823,6 +3825,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         }
     }
 
+    //TB SUPPORT_FIXES
     // Deduplicate overlapping support extrusions before wipe tower, skirt and brim generation so support brims and
     // first-layer hulls see the final support footprint. By-object printing is sequential, so overlap ownership there
     // would be wrong; in by-layer mode the first object in print order keeps an overlapping support region and later
@@ -4368,6 +4371,7 @@ void Print::_make_skirt()
     // The skirt will touch the occupied outline if skirt_distance is zero.
     // Generate loops inward to outward; callers reverse them before G-code export.
     // Loop while we have less skirts than required or any extruder hasn't reached the min length if any.
+    //TB PRINT_FIXES
     Polygon printable_area;
     Polygons skirt_avoid_areas;
     if (m_config.skirt_type == stCombined) {
@@ -4387,6 +4391,7 @@ void Print::_make_skirt()
             distance += float(scale_(spacing));
             // Generate the skirt centerline.
             Polygon loop;
+            //TB PRINT_FIXES
             if (m_config.skirt_type == stCombined) {
                 if (!make_printable_skirt_loop(loop, hull, printable_area, skirt_avoid_areas, distance, float(scale_(spacing * i))))
                     break;

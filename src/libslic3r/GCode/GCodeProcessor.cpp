@@ -575,6 +575,7 @@ size_t GCodeProcessor::TimeMachine::plan_klipper(bool lazy)
     return flush_count;
 }
 
+//TB OPTIMIZATIONS
 void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, bool collect_preview_data, size_t keep_last_n_blocks, float additional_time, EMoveType target_move_type, bool is_final)
 {
     if (!enabled)
@@ -645,6 +646,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
         // reader until the pre-heat injector consumes it, so output is byte-identical.
         if (block.skippable_type != SkipType::stNone)
             result.skippable_part_time[block.skippable_type] += motion_time;
+        //TB OPTIMIZATIONS
         // Low-memory export still accumulates total time, but has no MoveVertex in which to
         // store per-move time. Actual-speed interpolation below is likewise unavailable.
         if (collect_preview_data)
@@ -658,6 +660,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             first_layer_time += block_time;
 
         // detect actual speed moves required to render toolpaths using actual speed
+        //TB OPTIMIZATIONS
         if (collect_preview_data && mode == PrintEstimatedStatistics::ETimeMode::Normal) {
             GCodeProcessorResult::MoveVertex& curr_move = result.moves[block.move_id];
             if (curr_move.type != EMoveType::Extrude &&
@@ -2959,6 +2962,7 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     // (is_active() == false) apply_inverse is identity and behaviour is
     // unchanged from before.
     const bool machine_frame_active = m_machine_frame_transform.is_active();
+    //TB OPTIMIZATIONS
     auto compare_pos = [&](const auto &move) -> Vec3d {
         Vec3d pos = move.position.template cast<double>();
         if (!machine_frame_active)
@@ -2981,6 +2985,7 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     {
         Points pos;
         Points pos_custom;
+        //TB OPTIMIZATIONS
         float  max_print_z{ 0.0f };
         float  max_print_z_custom{ 0.0f };
     };
@@ -3833,6 +3838,7 @@ void GCodeProcessor::reset()
     m_last_default_color_id = 0;
 
     m_options_z_corrector.reset();
+    //TB OPTIMIZATIONS
     m_validation_moves.clear();
 
     m_detect_layer_based_on_tag = false;
@@ -4673,6 +4679,7 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             store_move_vertex(EMoveType::Color_change);
             CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::ColorChange, filament_id + 1, color, "" };
             m_result.custom_gcode_per_print_z.emplace_back(item);
+            //TB OPTIMIZATIONS
             if (m_collect_preview_data)
                 m_options_z_corrector.set();
             process_custom_gcode_time(CustomGCode::ColorChange);
@@ -4687,6 +4694,7 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         store_move_vertex(EMoveType::Pause_Print);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::PausePrint, get_filament_id() + 1, "", ""};
         m_result.custom_gcode_per_print_z.emplace_back(item);
+        //TB OPTIMIZATIONS
         if (m_collect_preview_data)
             m_options_z_corrector.set();
         process_custom_gcode_time(CustomGCode::PausePrint);
@@ -4698,6 +4706,7 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         store_move_vertex(EMoveType::Custom_GCode);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::Custom, get_filament_id() + 1, "", ""};
         m_result.custom_gcode_per_print_z.emplace_back(item);
+        //TB OPTIMIZATIONS
         if (m_collect_preview_data)
             m_options_z_corrector.set();
         return;
@@ -5379,6 +5388,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (origin == G1DiscretizationOrigin::G1)
             m_extruded_last_z = m_end_position[Z];
         // The queued blocks of the moves after the erased one follow them down the list.
+        //TB OPTIMIZATIONS
         if (m_collect_preview_data) {
             if (const std::optional<size_t> erased = m_options_z_corrector.update(m_height)) {
                 for (TimeMachine& machine : m_time_processor.machines) {
@@ -5710,6 +5720,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
     const Vec3f plate_offset = {(float) m_x_offset, (float) m_y_offset, 0.0f};
 
+    //TB OPTIMIZATIONS
     // Seam markers contain preview-only toolpath information. They are unavailable in low-memory
     // mode because it does not retain the preceding MoveVertex needed to reconstruct the seam.
     if (m_collect_preview_data && m_seams_detector.is_active()) {
@@ -5748,6 +5759,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             m_seams_detector.activate(false);
         }
     }
+    //TB OPTIMIZATIONS
     else if (m_collect_preview_data && type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
         m_seams_detector.activate(true);
         m_seams_detector.set_first_vertex(m_result.moves.back().position - m_extruder_offsets[filament_id] - plate_offset);
@@ -7588,6 +7600,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     const float store_z = (m_processing_start_custom_gcode && m_result.belt_tilt_angle == 0.f)
         ? m_first_layer_height
         : m_end_position[Z] - m_z_offset;
+    //TB OPTIMIZATIONS
     const Vec3f position = Vec3f(m_end_position[X] + m_x_offset, m_end_position[Y] + m_y_offset, store_z) +
                            m_extruder_offsets[filament_id];
 
@@ -7606,6 +7619,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         static_cast<unsigned char>(filament_id),
         m_cp_color.current,
         //BBS: add plate's offset to the rendering vertices
+        //TB OPTIMIZATIONS
         position,
         static_cast<float>(m_end_position[E] - m_start_position[E]),
         m_feedrate,
@@ -8136,6 +8150,7 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
         machine.klipper = m_flavor == gcfKlipper;
+        //TB OPTIMIZATIONS
         machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_collect_preview_data, keep_last_n_blocks, additional_time, target_move_type, is_final);
         if (m_collect_preview_data && static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
             actual_speed_moves = std::move(machine.actual_speed_moves);

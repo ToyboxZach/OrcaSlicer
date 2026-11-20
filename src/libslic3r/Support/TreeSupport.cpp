@@ -1918,6 +1918,7 @@ void TreeSupport::generate()
     create_tree_support_layers();
     m_ts_data = m_object->alloc_tree_support_preview_cache();
     m_ts_data->is_slim = is_slim;
+    //TB SUPPORT_FIXES
     // Add a finite collision ring around the printable area before tree pathing starts. This nudges tree branches away from
     // out-of-bed routes during generation instead of generating areas and clipping them to m_machine_border later.
     auto tmp = diff_ex(offset_ex(m_machine_border, scale_(100.)), m_machine_border);
@@ -3920,6 +3921,7 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
     branch_scale_factor = tan(object.config().tree_support_branch_angle.value * M_PI / 180.);
     clear_nodes();
     m_max_move_distances.resize(object.layers().size(), 0);
+    //TB SUPPORT_FIXES
     // Use the same blocker masks as contact detection for branch collisions and brim clipping.
     std::vector<Polygons> blocker_layers = object.slice_support_blockers();
     object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, blocker_layers);
@@ -3937,6 +3939,7 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
         for (const ExPolygon& poly : layer->lslices) {
             poly.simplify(scale_(m_radius_sample_resolution), &outline);
         }
+        //TB SUPPORT_FIXES
         if (consider_other_objects) {
             // Store all outlines in this object's local coordinates. This mirrors classic support trimming and avoids changing
             // downstream tree algorithms, which assume their caches are already local to the support-owning object.
@@ -3971,6 +3974,7 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
         // belt is where a branch ENDS: drop_nodes() stops a node once its whole
         // circle is in the belt (belt_node_landed()) and draw_circles() clips every
         // layer's circles to the belt plane, so the branch tapers to a tip on it.
+        //TB SUPPORT_FIXES
         // Blockers are collision outlines, but unlike model slices they are not valid places for a branch to rest.
         ExPolygons outline_below = outline;
         if (layer_nr < blocker_layers.size())
@@ -4064,6 +4068,7 @@ const ExPolygons& TreeSupportData::calculate_collision(const RadiusLayerPair& ke
 
     ExPolygons collision_areas = offset_ex(m_layer_outlines[key.layer_nr], scale_(key.radius+m_xy_distance));
     collision_areas = expolygons_simplify(collision_areas, scale_(m_radius_sample_resolution));
+    //TB SUPPORT_FIXES
     if (!m_machine_border.empty())
         collision_areas.emplace_back(m_machine_border);
     const auto ret = m_collision_cache.insert({ key, std::move(collision_areas) });

@@ -12839,6 +12839,7 @@ CLIActionsConfigDef::CLIActionsConfigDef()
                      "the support check.");
     def->set_default_value(new ConfigOptionBool(false));
 
+    //TB PRINT_FIXES
     def = this->add("allow_tb_fixes", coBool);
     def->label = L("Allow TB fixes");
     def->tooltip = L("Allow the CLI to lower objects with an empty first layer by up to 200 mm. "

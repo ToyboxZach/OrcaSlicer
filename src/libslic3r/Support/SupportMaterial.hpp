@@ -44,6 +44,7 @@ private:
 	// Generate top contact layers supporting overhangs.
 	// For a soluble interface material synchronize the layer heights with the object, otherwise leave the layer height undefined.
 	// If supports over bed surface only are requested, don't generate contact layers over an object.
+	//TB SUPPORT_FIXES
 	// Return cumulative blocker masks for contact detection and lower-layer projection.
 	SupportGeneratorLayersPtr top_contact_layers(const PrintObject &object, const std::vector<Polygons> &buildplate_covered,
 		SupportGeneratorLayerStorage &layer_storage, std::vector<Polygons> &blockers_layers) const;

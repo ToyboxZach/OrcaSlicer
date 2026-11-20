@@ -51,6 +51,7 @@ using namespace std::literals;
 // had to use a define because the macro processing inside macro BOOST_LOG_TRIVIAL()
 #define error_level_not_in_cache debug
 
+//TB SUPPORT_FIXES
 static Polygons calculateMachineBorderCollision(Polygon machine_border)
 {
     if (machine_border.points.size() < 3)
@@ -111,6 +112,7 @@ TreeModelVolumes::TreeModelVolumes(
 
 #else
     {
+        //TB SUPPORT_FIXES
         TreeSupportMeshGroupSettings mesh_settings(print_object);
         const TreeSupportSettings config{ mesh_settings, print_object.slicing_parameters() };
         m_current_min_xy_dist = config.xy_min_distance;
@@ -129,6 +131,7 @@ TreeModelVolumes::TreeModelVolumes(
         // reaches the bottom layer floating in mid-air.  The belt is where branches
         // END: organic_draw_branches() clips their slices with m_belt_floor and the
         // first clipped slice is the contact.
+        //TB SUPPORT_FIXES
         std::vector<Polygons> blocker_object_layers = print_object.slice_support_blockers();
         print_object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, blocker_object_layers);
         m_anti_overhang.resize(m_raft_layers.size() + blocker_object_layers.size());
@@ -142,6 +145,7 @@ TreeModelVolumes::TreeModelVolumes(
         size_t num_raft_layers = m_raft_layers.size();
         size_t num_layers = print_object.layer_count() + num_raft_layers;
         outlines.assign(num_layers, Polygons{});
+        //TB SUPPORT_FIXES
         // Organic supports use TreeModelVolumes for collision, avoidance and placeable-on-model areas.
         // Add sibling object slices to these volumes in by-layer mode so organic branches do not pass through another object.
         // This deliberately affects only the model-volume masks; overhang sampling remains driven by the support-owning object.

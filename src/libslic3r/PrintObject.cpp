@@ -2103,6 +2103,7 @@ void PrintObject::detect_surfaces_type()
                         for (Surface &surface : bottom)
                             surface.surface_type = stBottom;
                     }
+                            //TB OPTIMIZATIONS
                             }
 
                     // now, if the object contained a thin membrane, we could have overlapping bottom
@@ -2168,6 +2169,7 @@ void PrintObject::detect_surfaces_type()
                                                 bot_tmp.emplace_back(std::move(b));
                                         }
                                         bottom = std::move(bot_tmp);
+                                        //TB OPTIMIZATIONS
                                         bottom_bounds.clear(); // Subsequent cracks must use the rebuilt bottom geometry.
                                     }
                                 }
@@ -3062,6 +3064,7 @@ void PrintObject::discover_vertical_shells()
                         regularized_shell.erase(std::remove_if(regularized_shell.begin(), regularized_shell.end(),
                                                                [&internal_volume, &internal_bboxes, &min_perimeter_infill_spacing,
                                                                 &object_volume](const ExPolygon &p) {
+                                                                   //TB OPTIMIZATIONS
                                                                    bool tiny_or_wrapped = false;
                                                                    Polygons polygon_paths;
                                                                    {

@@ -31,6 +31,7 @@ SLIC3R_DERIVE_EXCEPTION(PlaceholderParserError, RuntimeError);
 class SlicingError : public Exception 
 {
 public:
+    //TB PRINT_FIXES
     enum class Reason { Other, EmptyFirstLayer };
     using Exception::Exception;
     SlicingError(std::string const &msg, size_t objectId, Reason reason = Reason::Other)

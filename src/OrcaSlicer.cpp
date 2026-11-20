@@ -151,6 +151,7 @@ EM_JS(void, wasm_emit_error, (int code, const char *message), {
 #include "libslic3r/ObjColorUtils.hpp"
 
 #include "OrcaSlicer.hpp"
+//TB PRINT_FIXES
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/Utils/MeshInspect.hpp"
 #include "slic3r/Utils/PaintCLI.hpp"
@@ -6487,6 +6488,7 @@ int CLI::run(int argc, char **argv)
             no_check = m_config.opt_bool(opt_key);
         }else if(opt_key=="strict"){
             //already read into sliced_info at the start of run()
+        //TB PRINT_FIXES
         }else if(opt_key=="allow_tb_fixes"){
             // Read directly from m_config when slicing, independent of argument order.
         //} else if (opt_key == "export_gcode" || opt_key == "export_sla" || opt_key == "slice") {
@@ -7165,6 +7167,7 @@ int CLI::run(int argc, char **argv)
                                 const PrintConfig& print_config = print_fff->config();
                                 Model::setExtruderParams(m_print_config, filament_count);
                                 Model::setPrintSpeedTable(m_print_config, print_config);
+                                //TB PRINT_FIXES
                                 TBFixes::FirstLayerRetry first_layer_retry;
                                 bool retried = false;
                                 for (;;) {
