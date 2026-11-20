@@ -844,7 +844,8 @@ TEST_CASE("Caged external overhangs are slowed when printed by object or through
     REQUIRE(*std::max_element(feed_rates.begin(), feed_rates.end()) < caged_slow_speed * MM_PER_MIN);
 }
 
-TEST_CASE("Detected overhang regions have balanced markers", "[ExtrusionProcessor]")
+//TB ANNOTATIONS
+TEST_CASE("Overhang markers change state before the next extrusion", "[ExtrusionProcessor]")
 {
     const int threshold = GENERATE(25, 50);
     CAPTURE(threshold);
@@ -866,7 +867,8 @@ TEST_CASE("Detected overhang regions have balanced markers", "[ExtrusionProcesso
     init_print(std::vector<TriangleMesh>{caged_overhang_mesh()}, print, model, config, nullptr, false);
 
     bool in_overhang = false;
-    size_t starts = 0, moves = 0;
+    bool awaiting_supported_extrusion = false;
+    size_t starts = 0, exits = 0, moves = 0;
     GCodeReader reader;
     const std::string output = gcode(print);
     if (threshold == 25)
@@ -880,14 +882,62 @@ TEST_CASE("Detected overhang regions have balanced markers", "[ExtrusionProcesso
         } else if (raw == end_marker) {
             CHECK(in_overhang);
             in_overhang = false;
+            awaiting_supported_extrusion = true;
+            ++exits;
         } else if (line.extruding(self)) {
+            awaiting_supported_extrusion = false;
             if (in_overhang)
                 ++moves;
+        } else if (awaiting_supported_extrusion && line.cmd_is("G1")) {
+            CHECK_FALSE(line.retracting(self));
+            CHECK_THAT(line.dist_XY(self), Catch::Matchers::WithinAbs(0., EPSILON));
         }
     });
-    CHECK_FALSE(in_overhang);
+    CHECK_FALSE(awaiting_supported_extrusion);
     CHECK(starts > 0);
+    CHECK(exits > 0);
     CHECK(moves > 0);
+}
+
+//TB ANNOTATIONS
+TEST_CASE("Overhang marker state survives path boundaries until supported extrusion", "[ExtrusionProcessor]")
+{
+    const int threshold = GENERATE(25, 50);
+    const bool close_top = GENERATE(false, true);
+    CAPTURE(threshold, close_top);
+    TriangleMesh mesh = make_cube(20., 20., 4.);
+    for (Vec3f &vertex : mesh.its.vertices) {
+        vertex.x() += (vertex.x() - 10.f) * vertex.z() / 10.f;
+        vertex.y() += (vertex.y() - 10.f) * vertex.z() / 10.f;
+    }
+    DynamicPrintConfig config = caged_overhang_config("classic");
+    config.set_deserialize_strict({
+        {"layer_height", threshold == 25 ? "0.2" : "0.3"},
+        {"wall_loops", "1"},
+        {"sparse_infill_density", "0%"},
+        {"top_shell_layers", close_top ? "1" : "0"},
+        {"top_shell_thickness", "0"},
+        {"bottom_shell_layers", "0"},
+        {"bottom_shell_thickness", "0"},
+        {"ensure_vertical_shell_thickness", "none"},
+        {"enable_support", "0"},
+        {"brim_type", "no_brim"},
+        {"skirt_loops", "0"},
+    });
+    const std::string output = slice({mesh}, config);
+    const std::string start_marker = ";O" + std::to_string(threshold) + "\n";
+    const std::string end_marker = ";X" + std::to_string(threshold) + "\n";
+    const size_t start = output.find(start_marker);
+    REQUIRE(start != std::string::npos);
+    CHECK(output.find(start_marker, start + start_marker.size()) == std::string::npos);
+    const size_t end = output.find(end_marker);
+    if (close_top) {
+        REQUIRE(end != std::string::npos);
+        CHECK(end > start);
+        CHECK(output.find(end_marker, end + end_marker.size()) == std::string::npos);
+    } else {
+        CHECK(end == std::string::npos);
+    }
 }
 
 TEST_CASE("Overhang markers are absent when overhang detection is disabled", "[ExtrusionProcessor]")

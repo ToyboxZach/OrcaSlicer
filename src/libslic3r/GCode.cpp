@@ -3420,6 +3420,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
 {
     PROFILE_FUNC();
 
+    //TB ANNOTATIONS
+    m_overhang_25 = false;
+    m_overhang_50 = false;
     m_print = &print;
     m_timelapse_pos_picker.init(&print,m_writer.get_xy_offset().cast<coord_t>());
     {
@@ -9999,16 +10002,14 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
     };
 
     //TB ANNOTATIONS
-    bool overhang_25 = false;
-    bool overhang_50 = false;
-    auto mark_overhang = [&gcode, &overhang_25, &overhang_50](bool at_least_25, bool at_least_50) {
-        if (overhang_25 != at_least_25) {
+    auto mark_overhang = [this, &gcode](bool at_least_25, bool at_least_50) {
+        if (m_overhang_25 != at_least_25) {
             gcode += at_least_25 ? ";O25\n" : ";X25\n";
-            overhang_25 = at_least_25;
+            m_overhang_25 = at_least_25;
         }
-        if (overhang_50 != at_least_50) {
+        if (m_overhang_50 != at_least_50) {
             gcode += at_least_50 ? ";O50\n" : ";X50\n";
-            overhang_50 = at_least_50;
+            m_overhang_50 = at_least_50;
         }
     };
 
@@ -10099,12 +10100,12 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
                 apply_role_based_fan_speed();
             }
             //TB ANNOTATIONS
-            if (!path.is_force_no_extrusion() && new_points.size() > 1) {
+            if (!path.is_force_no_extrusion()) {
                 // Without emitted splits, only mark a threshold when it applies to the whole path.
-                const auto end = new_points.end() - 1;
-                const bool all_25 = std::all_of(new_points.begin(), end,
+                const auto end = new_points.empty() ? new_points.end() : new_points.end() - 1;
+                const bool all_25 = new_points.size() > 1 && std::all_of(new_points.begin(), end,
                     [](const ProcessedPoint &point) { return point.geometric_overlap <= 0.75f; });
-                const bool all_50 = std::all_of(new_points.begin(), end,
+                const bool all_50 = new_points.size() > 1 && std::all_of(new_points.begin(), end,
                     [](const ProcessedPoint &point) { return point.geometric_overlap <= 0.5f; });
                 mark_overhang(all_25, all_50);
             }
@@ -10383,8 +10384,6 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
 
         }
     }
-    //TB ANNOTATIONS
-    mark_overhang(false, false);
     if (m_enable_cooling_markers) {
             gcode += ";_EXTRUDE_END\n";
     }

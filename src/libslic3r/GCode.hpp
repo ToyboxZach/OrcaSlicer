@@ -780,6 +780,8 @@ protected:
     Wipe                                m_wipe;
     //TB ANNOTATIONS
     float                               m_last_extrusion_overhang_percent = 0.f;
+    bool                                m_overhang_25 = false;
+    bool                                m_overhang_50 = false;
     AvoidCrossingPerimeters             m_avoid_crossing_perimeters;
     ExclusionVolumeTravelAvoidance      m_exclusion_volume_travel_avoidance;
     RetractWhenCrossingPerimeters       m_retract_when_crossing_perimeters;
