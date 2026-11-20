@@ -153,7 +153,8 @@ TEST_CASE("Wipe start comments include overhang percentage", "[Wipe][Regression]
         ++wipe_starts;
         const size_t overhang_pos = comment.find(" OH:");
         REQUIRE(overhang_pos != std::string_view::npos);
-        CHECK(comment.find('%', overhang_pos) != std::string_view::npos);
+        const double overhang = std::stod(std::string(comment.substr(overhang_pos + 4)));
+        CHECK_THAT(overhang, Catch::Matchers::WithinAbs(0., 0.01));
     });
 
     REQUIRE(wipe_starts > 0);

@@ -2,7 +2,9 @@ get_filename_component(_TEST_NAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 
 # Observe the geometry backend's actual CGAL layout without duplicating its flags.
 # This source is only added when the test suite is enabled.
-target_sources(libslic3r_cgal PRIVATE texture_import_cgal.cpp)
+if (TARGET libslic3r_cgal)
+    target_sources(libslic3r_cgal PRIVATE texture_import_cgal.cpp)
+endif ()
 
 add_executable(${_TEST_NAME}_tests
     ${_TEST_NAME}_tests.cpp
@@ -29,7 +31,6 @@ add_executable(${_TEST_NAME}_tests
     test_config.cpp
     test_config_variant_expansion.cpp
     test_locales_utils.cpp
-    test_drc.cpp
     test_gcodereader.cpp
     test_toolordering_nozzle_group.cpp
     test_parallel_resolve.cpp
@@ -82,7 +83,6 @@ add_executable(${_TEST_NAME}_tests
     test_indexed_triangle_set.cpp
     test_connected_bodies.cpp
     test_texture_displacement.cpp
-    test_texture_import.cpp
     test_instance_lock.cpp
     ../libnest2d/printer_parts.cpp
     )
@@ -99,16 +99,20 @@ if (SLIC3R_CAD)
 endif ()
 
 if (NOT SLIC3R_HEADLESS)
-    target_sources(${_TEST_NAME}_tests PRIVATE test_marchingsquares.cpp test_mesh_repair.cpp test_step.cpp)
+    target_sources(${_TEST_NAME}_tests PRIVATE
+        test_marchingsquares.cpp test_mesh_repair.cpp test_step.cpp
+        test_drc.cpp test_texture_import.cpp)
+    # Headless builds omit the Draco importer and texture-painting backend.
+    # test_drc.cpp encodes its own fixtures, so it also needs the private dependency.
+    find_package(Draco REQUIRED)
+    target_link_libraries(${_TEST_NAME}_tests draco::draco)
 endif()
 
 if (TARGET OpenVDB::openvdb AND NOT SLIC3R_HEADLESS)
     target_sources(${_TEST_NAME}_tests PRIVATE test_hollowing.cpp)
 endif()
 
-# libslic3r links Draco privately; test_drc.cpp encodes its own fixtures.
-find_package(Draco REQUIRED)
-target_link_libraries(${_TEST_NAME}_tests test_common libslic3r draco::draco Catch2::Catch2WithMain)
+target_link_libraries(${_TEST_NAME}_tests test_common libslic3r Catch2::Catch2WithMain)
 target_include_directories(${_TEST_NAME}_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 if (SLIC3R_PCH AND NOT SLIC3R_SYNTAXONLY)
     add_precompiled_header(${_TEST_NAME}_tests ${CMAKE_SOURCE_DIR}/src/libslic3r/pchheader.hpp FORCEINCLUDE)

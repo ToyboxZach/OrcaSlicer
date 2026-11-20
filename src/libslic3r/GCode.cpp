@@ -721,7 +721,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 // add tag for processor
                 std::ostringstream wipe_start;
                 wipe_start << ';' << GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start)
-                           << " OH:" << std::fixed << std::setprecision(1) << this->overhang_percent << "%\n";
+                           << " OH:" << std::fixed << std::setprecision(1) << this->overhang_percent << "\n";
                 gcode += wipe_start.str();
                 //BBS: don't need to enable cooling makers when this is the last wipe. Because no more cooling layer will clean this "_WIPE"
                 //Softfever:
