@@ -9987,8 +9987,13 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
                                      ironing_fan_speed >= 0 && path.role() == erIroning);
     };
 
+    bool overhang_25 = false;
     bool overhang_50 = false;
-    auto mark_overhang = [&gcode, &overhang_50](bool at_least_50) {
+    auto mark_overhang = [&gcode, &overhang_25, &overhang_50](bool at_least_25, bool at_least_50) {
+        if (overhang_25 != at_least_25) {
+            gcode += at_least_25 ? ";O25\n" : ";X25\n";
+            overhang_25 = at_least_25;
+        }
         if (overhang_50 != at_least_50) {
             gcode += at_least_50 ? ";O50\n" : ";X50\n";
             overhang_50 = at_least_50;
@@ -10084,9 +10089,11 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
             if (!path.is_force_no_extrusion() && new_points.size() > 1) {
                 // Without emitted splits, only mark a threshold when it applies to the whole path.
                 const auto end = new_points.end() - 1;
+                const bool all_25 = std::all_of(new_points.begin(), end,
+                    [](const ProcessedPoint &point) { return point.geometric_overlap <= 0.75f; });
                 const bool all_50 = std::all_of(new_points.begin(), end,
                     [](const ProcessedPoint &point) { return point.geometric_overlap <= 0.5f; });
-                mark_overhang(all_50);
+                mark_overhang(all_25, all_50);
             }
             // BBS: use G1 if not enable arc fitting or has no arc fitting result or in spiral_mode mode or we are doing sloped extrusion
             // Attention: G2 and G3 is not supported in spiral_mode mode
@@ -10263,7 +10270,8 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
             if(line_length < EPSILON)
                 continue;
             if (!path.is_force_no_extrusion())
-                mark_overhang(pre_processed_point.geometric_overlap <= 0.5f);
+                mark_overhang(pre_processed_point.geometric_overlap <= 0.75f,
+                              pre_processed_point.geometric_overlap <= 0.5f);
             path_length += line_length;
             double new_speed = pre_processed_point.speed * 60.0;
             
@@ -10361,7 +10369,7 @@ std::string GCode::_extrude_piece(const ExtrusionPath &path, const std::string &
 
         }
     }
-    mark_overhang(false);
+    mark_overhang(false, false);
     if (m_enable_cooling_markers) {
             gcode += ";_EXTRUDE_END\n";
     }

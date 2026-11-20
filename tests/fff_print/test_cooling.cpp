@@ -2,6 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "test_helpers.hpp"
+#include "libslic3r/GCode.hpp"
+#include "libslic3r/GCode/CoolingBuffer.hpp"
+#include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/GCodeWriter.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -16,6 +20,58 @@
 
 using namespace Slic3r;
 using namespace Slic3r::Test;
+
+TEST_CASE("Cooling reports original layer time only when it slows extrusion", "[Cooling]")
+{
+    const bool enabled = GENERATE(false, true);
+    const double target_time = GENERATE(1.0, 10.0);
+    const double minimum_speed = GENERATE(1.0, 10.0);
+    CAPTURE(enabled, target_time, minimum_speed);
+    PrintConfig config;
+    config.slow_down_for_layer_cooling.values = {enabled};
+    config.slow_down_layer_time.values = {target_time};
+    config.slow_down_min_speed.values = {minimum_speed};
+    config.dont_slow_down_outer_wall.values = {false};
+    config.use_relative_e_distances.value = true;
+    GCode generator;
+    generator.apply_print_config(config);
+    generator.writer().set_extruders({0});
+    CoolingBuffer cooling(generator);
+    const std::string marker = ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Layer_Change) + "\n";
+    const std::string output = cooling.process_layer(
+        marker + "G1 F600;_EXTRUDE_SET_SPEED\nG1 X50 E1\n;_EXTRUDE_END\n", 1, true);
+    if (enabled && target_time > 5.0 && minimum_speed < 10.0) {
+        CHECK(output.find(marker + ";C5.0\n") != std::string::npos);
+        CHECK(output.find("F600") == std::string::npos);
+    } else {
+        CHECK(output.find(";C") == std::string::npos);
+        CHECK(output.find("F600") != std::string::npos);
+    }
+}
+
+TEST_CASE("Cooling includes buffered support time in its slowdown note", "[Cooling]")
+{
+    PrintConfig config;
+    config.slow_down_for_layer_cooling.values = {true};
+    config.slow_down_layer_time.values = {10.0};
+    config.slow_down_min_speed.values = {1.0};
+    config.dont_slow_down_outer_wall.values = {false};
+    config.use_relative_e_distances.value = true;
+    GCode generator;
+    generator.apply_print_config(config);
+    generator.writer().set_extruders({0});
+    CoolingBuffer cooling(generator);
+    const std::string marker = ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Layer_Change) + "\n";
+    CHECK(cooling.process_layer(
+        marker + "G1 F600;_EXTRUDE_SET_SPEED\nG1 X20 E1\n;_EXTRUDE_END\nG92 E0\n", 1, false).empty());
+    const std::string output = cooling.process_layer(
+        marker + "G1 F600;_EXTRUDE_SET_SPEED\nG1 X50 E1\n;_EXTRUDE_END\n", 2, true);
+    INFO(output);
+    const size_t note = output.find(";C5.0\n");
+    REQUIRE(note != std::string::npos);
+    CHECK(note == output.rfind(marker) + marker.size());
+    CHECK(output.find(";C", note + 1) == std::string::npos);
+}
 
 // The fan is held off for the first close_fan_the_first_x_layers layers, so an explicit
 // fan-off command is emitted.

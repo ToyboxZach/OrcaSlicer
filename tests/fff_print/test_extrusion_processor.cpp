@@ -844,8 +844,12 @@ TEST_CASE("Caged external overhangs are slowed when printed by object or through
     REQUIRE(*std::max_element(feed_rates.begin(), feed_rates.end()) < caged_slow_speed * MM_PER_MIN);
 }
 
-TEST_CASE("Detected 50 percent overhang regions have balanced markers", "[ExtrusionProcessor]")
+TEST_CASE("Detected overhang regions have balanced markers", "[ExtrusionProcessor]")
 {
+    const int threshold = GENERATE(25, 50);
+    CAPTURE(threshold);
+    const std::string start_marker = ";O" + std::to_string(threshold);
+    const std::string end_marker = ";X" + std::to_string(threshold);
     const auto [key, value] = GENERATE(table<const char *, const char *>({
         {"fan_speedup_time", "0"},
         {"fan_speedup_time", "0.5"},
@@ -853,31 +857,37 @@ TEST_CASE("Detected 50 percent overhang regions have balanced markers", "[Extrus
     }));
     INFO(key << " = " << value);
     DynamicPrintConfig config = caged_overhang_config("classic");
+    // On the 45-degree slope, layer height / wall width sets the overhang.
+    // 0.2 / 0.42 lies between 25% and 50%; 0.3 / 0.42 exceeds 50%.
+    config.set_deserialize_strict("layer_height", threshold == 25 ? "0.2" : "0.3");
     config.set_deserialize_strict(key, value);
     Print print;
     Model model;
     init_print(std::vector<TriangleMesh>{caged_overhang_mesh()}, print, model, config, nullptr, false);
 
-    bool in_50 = false;
-    size_t starts_50 = 0, moves_50 = 0;
+    bool in_overhang = false;
+    size_t starts = 0, moves = 0;
     GCodeReader reader;
-    reader.parse_buffer(gcode(print), [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
+    const std::string output = gcode(print);
+    if (threshold == 25)
+        CHECK(output.find(";O50\n") == std::string::npos);
+    reader.parse_buffer(output, [&](GCodeReader &self, const GCodeReader::GCodeLine &line) {
         const std::string &raw = line.raw();
-        if (raw == ";O50") {
-            CHECK_FALSE(in_50);
-            in_50 = true;
-            ++starts_50;
-        } else if (raw == ";X50") {
-            CHECK(in_50);
-            in_50 = false;
+        if (raw == start_marker) {
+            CHECK_FALSE(in_overhang);
+            in_overhang = true;
+            ++starts;
+        } else if (raw == end_marker) {
+            CHECK(in_overhang);
+            in_overhang = false;
         } else if (line.extruding(self)) {
-            if (in_50)
-                ++moves_50;
+            if (in_overhang)
+                ++moves;
         }
     });
-    CHECK_FALSE(in_50);
-    CHECK(starts_50 > 0);
-    CHECK(moves_50 > 0);
+    CHECK_FALSE(in_overhang);
+    CHECK(starts > 0);
+    CHECK(moves > 0);
 }
 
 TEST_CASE("Overhang markers are absent when overhang detection is disabled", "[ExtrusionProcessor]")
@@ -889,6 +899,8 @@ TEST_CASE("Overhang markers are absent when overhang detection is disabled", "[E
     init_print(std::vector<TriangleMesh>{caged_overhang_mesh()}, print, model, config, nullptr, false);
 
     const std::string output = gcode(print);
+    CHECK(output.find(";O25\n") == std::string::npos);
+    CHECK(output.find(";X25\n") == std::string::npos);
     CHECK(output.find(";O50\n") == std::string::npos);
 }
 

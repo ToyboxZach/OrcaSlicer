@@ -5,6 +5,7 @@
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Circle.hpp"
 #include "CoolingBuffer.hpp"
+#include "GCodeProcessor.hpp"
 #include <algorithm>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -350,8 +351,16 @@ std::string CoolingBuffer::process_layer(std::string &&gcode, size_t layer_id, b
         // This is either an object layer or the very last print layer. Calculate cool down over the collected support layers
         // and one object layer.
         std::vector<PerExtruderAdjustments> per_extruder_adjustments = this->parse_layer_gcode(m_gcode, m_current_pos);
-        float layer_time_stretched = this->calculate_layer_slowdown(per_extruder_adjustments);
+        float original_layer_time = 0.f;
+        float layer_time_stretched = this->calculate_layer_slowdown(per_extruder_adjustments, original_layer_time);
         out = this->apply_layer_cooldown(m_gcode, layer_id, layer_time_stretched, per_extruder_adjustments);
+        if (original_layer_time && layer_time_stretched > original_layer_time + EPSILON) {
+            char note[64];
+            std::snprintf(note, sizeof(note), ";C%.1f\n", original_layer_time);
+            const std::string layer_marker = ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Layer_Change) + "\n";
+            const size_t layer_start = out.rfind(layer_marker);
+            out.insert(layer_start == std::string::npos ? 0 : layer_start + layer_marker.size(), note);
+        }
         m_gcode.clear();
     }
     return out;
@@ -663,8 +672,9 @@ static inline void extruder_range_slow_down_non_proportional(
 }
 
 // Calculate slow down for all the extruders.
-float CoolingBuffer::calculate_layer_slowdown(std::vector<PerExtruderAdjustments> &per_extruder_adjustments)
+float CoolingBuffer::calculate_layer_slowdown(std::vector<PerExtruderAdjustments> &per_extruder_adjustments, float &original_layer_time)
 {
+    original_layer_time = 0.f;
     // Sort the extruders by an increasing slow_down_layer_time.
     // The layers with a lower slow_down_layer_time are slowed down
     // together with all the other layers with slow_down_layer_time above.
@@ -676,6 +686,7 @@ float CoolingBuffer::calculate_layer_slowdown(std::vector<PerExtruderAdjustments
     for (PerExtruderAdjustments &adj : per_extruder_adjustments) {
         // Curren total time for this extruder.
         adj.time_total  = adj.elapsed_time_total();
+        original_layer_time += adj.time_total;
         // Maximum time for this extruder, when all extrusion moves are slowed down to min_extrusion_speed.
         adj.time_maximum = adj.maximum_time_after_slowdown(true);
         if (adj.cooling_slow_down_enabled && adj.lines.size() > 0) {
@@ -683,7 +694,7 @@ float CoolingBuffer::calculate_layer_slowdown(std::vector<PerExtruderAdjustments
             // sorts the lines, also sets adj.time_non_adjustable
             adj.sort_lines_by_decreasing_feedrate();
         } else
-            elapsed_time_total0 += adj.elapsed_time_total();
+            elapsed_time_total0 += adj.time_total;
     }
 
     std::sort(by_slowdown_time.begin(), by_slowdown_time.end(),
