@@ -237,6 +237,25 @@ WipeTowerFootprint estimate_wipe_tower_footprint(const ConfigBase &config, WipeT
         footprint.depth = depth;
     }
 
+    if (rib_wall && !type1) {
+        // TB_PURGE revert to rectangular prime tower
+        // The first tower layer can switch back to the filament used for priming.
+        const double rib_volume = volume + (!semm_flush && !dual_nozzle && filaments_cnt > 1 ? prime_volume : 0.);
+        double depth = rib_volume / (layer_height * width);
+        if (!semm_flush)
+            depth *= extra_spacing;
+        depth = std::max(double(perimeter_width), depth);
+        const double diagonal = std::hypot(width, depth);
+        double rib_length = diagonal;
+        if (depth + EPSILON < min_depth)
+            rib_length = std::max(rib_length, min_depth * std::sqrt(2.));
+        rib_length = std::max(diagonal, rib_length + extra_rib_length);
+        const double rib_w = std::min(rib_width, std::min(width, depth) / 2.);
+        const double extension = rib_length - diagonal;
+        footprint.width = width + (extension * width + rib_w * depth) / diagonal;
+        footprint.depth = depth + (extension * depth + rib_w * width) / diagonal;
+    }
+
     footprint.brim_width = opt_float("prime_tower_brim_width");
     if (footprint.brim_width < 0)
         footprint.brim_width = WipeTower::get_auto_brim_by_height(float(max_object_height));

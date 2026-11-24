@@ -1561,9 +1561,7 @@ static Polygon estimated_wipe_tower_footprint(const Print &print)
         depth = wtd.depth;
         if (depth < EPSILON)
             return Polygon();
-        // PartPlate::estimate_wipe_tower_size() squares the rib tower off and the preview box the user
-        // drags around is built from that, so match it here rather than keeping the nominal width.
-        width     = config.wipe_tower_wall_type.value == WipeTowerWallType::wtwRib ? depth : double(config.prime_tower_width.value);
+        width     = wtd.width;
         local_min = Vec2d::Zero();
         brim      = double(wtd.brim_width);
     }
@@ -1828,7 +1826,7 @@ static StringObjectException layered_print_cleareance_valid(const Print &print, 
     float               a            = config.wipe_tower_rotation_angle.value;
     //float               v            = config.wiping_volume.value;
 
-    // The estimate resolves the effective width (a rib wall squares the tower).
+    // The estimate resolves the effective footprint, including any rib overhang.
     const WipeTowerData &wipe_tower_estimate = print.wipe_tower_data(filaments_count);
     float                width               = wipe_tower_estimate.width;
     float                depth               = wipe_tower_estimate.depth;

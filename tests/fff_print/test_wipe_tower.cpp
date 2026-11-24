@@ -403,8 +403,7 @@ TEST_CASE("The tower is sized for the thinnest layer any object on the plate is 
 
 TEST_CASE("Validation is given the tower's effective width, not the configured one", "[WipeTower]")
 {
-    // A rib wall squares the tower, so its width is its depth. Validation reads this rather
-    // than re-deriving the rule from the wall type.
+    // Validation reads the estimated footprint rather than the configured body width.
     Print print;
     Model model;
 
@@ -416,12 +415,22 @@ TEST_CASE("Validation is given the tower's effective width, not the configured o
         CHECK(data.depth < data.width);
     }
 
-    SECTION("a rib wall reports the squared footprint") {
-        const DynamicPrintConfig config = tower_estimate_config("rib");
+    SECTION("a Type1 rib wall reports the squared footprint") {
+        DynamicPrintConfig config = tower_estimate_config("rib");
+        config.set_deserialize_strict("wipe_tower_type", "type1");
         init_print({ cube(20) }, print, model, config);
         const WipeTowerData &data = print.wipe_tower_data(2);
         CHECK_THAT(data.width, Catch::Matchers::WithinAbs(data.depth, 1e-4));
         CHECK(data.width > 0.f);
+    }
+
+    SECTION("a Type2 rib wall reports the rectangular footprint") {
+        DynamicPrintConfig config = tower_estimate_config("rib");
+        config.set_deserialize_strict("wipe_tower_type", "type2");
+        init_print({ cube(20) }, print, model, config);
+        const WipeTowerData &data = print.wipe_tower_data(2);
+        CHECK(data.width > 50.f);
+        CHECK(data.width > data.depth);
     }
 }
 
@@ -429,21 +438,33 @@ TEST_CASE("Generating the tower keeps its reported width current", "[WipeTower]"
 {
     // width is handed out after the slice, so leaving it at the estimate reports a zero-width
     // tower to every post-generation consumer.
-    const DynamicPrintConfig config = wipe_tower_toolchange_config("marlin");
+    DynamicPrintConfig config = wipe_tower_toolchange_config("marlin");
+    config.set_deserialize_strict({ { "wipe_tower_type", "type2" },
+                                   { "wipe_tower_wall_type", "rib" },
+                                   { "prime_tower_width", "20" },
+                                   { "prime_tower_brim_width", "0" },
+                                   { "prime_volume", "20" },
+                                   { "purge_in_prime_tower", "0" },
+                                   { "wipe_tower_extra_spacing", "120%" },
+                                   { "wipe_tower_rib_width", "8" },
+                                   { "wipe_tower_extra_rib_length", "4" } });
     Print print;
     Model model;
     init_print({ cube(10) }, print, model, config);
     print.apply(model, config);
-    REQUIRE(print.wipe_tower_data(2).width > 0.f);
+    const float estimated_width = print.wipe_tower_data(2).width;
+    const float estimated_depth = print.wipe_tower_data(2).depth;
+    REQUIRE(estimated_width > 0.f);
 
     print.process();
     REQUIRE(print.is_step_done(psWipeTower));
     const WipeTowerData &data = print.wipe_tower_data();
-    // A width the generator never wrote reads as zero. A rib wall squares the tower, so the
-    // generated width is the body square: under the configured 50 mm, and inside the depth.
-    CHECK(data.width > 0.f);
-    CHECK(data.width < 50.f);
-    CHECK(data.width <= data.depth + EPSILON);
+    CHECK_THAT(data.width, Catch::Matchers::WithinAbs(20., 1e-4));
+    CHECK(data.depth < data.width);
+    REQUIRE(data.wipe_tower_mesh_data.has_value());
+    const BoundingBox bounds = get_extents(data.wipe_tower_mesh_data->bottom);
+    CHECK_THAT(estimated_width, Catch::Matchers::WithinAbs(unscaled(bounds.size().x()), 5.));
+    CHECK_THAT(estimated_depth, Catch::Matchers::WithinAbs(unscaled(bounds.size().y()), 5.));
 }
 
 TEST_CASE("A single-filament plate reserves a tower only when one is actually printed", "[WipeTower]")

@@ -226,7 +226,7 @@ TEST_CASE("A tool change reserves a tower even with nothing to purge", "[WipeTow
     config.set_key_value("prime_volume", new ConfigOptionFloat(0.));
     config.set_key_value("filament_prime_volume", new ConfigOptionFloats({0.}));
 
-    CHECK(estimate(config, 3, 0.2, height, WipeTowerType::Type2).depth >= floor);
+    CHECK(estimate(config, 3, 0.2, height, WipeTowerType::Type2).depth > 0.);
     CHECK(estimate(config, 3, 0.2, height, WipeTowerType::Type1).depth >= floor);
     // Still nothing for a lone filament with no other reason.
     CHECK_THAT(estimate(config, 1, 0.2, height, WipeTowerType::Type2).depth, WithinAbs(0., 1e-9));
@@ -250,25 +250,43 @@ TEST_CASE("Both wall types agree on whether there is a tower at all", "[WipeTowe
     CHECK_THAT(estimate(rect, 1, 0.2, height).depth, WithinAbs(0., 1e-9));
     CHECK_THAT(estimate(rib, 1, 0.2, height).depth, WithinAbs(0., 1e-9));
 
-    // With a tool change both reserve one, and both respect the stability floor.
+    // With a tool change both reserve one. Rib walls use their ribs for stability.
     CHECK(estimate(rect, 2, 0.2, height).depth >= WipeTower::get_limit_depth_by_height(float(height)));
-    CHECK(estimate(rib, 2, 0.2, height).depth >= WipeTower::get_limit_depth_by_height(float(height)));
+    CHECK(estimate(rib, 2, 0.2, height).depth > 0.);
 }
 
-TEST_CASE("A rib wall squares the tower and caps the rib width", "[WipeTowerEstimate]") {
+TEST_CASE("A Type2 rib tower estimates rectangular bounds", "[WipeTowerEstimate]") {
     DynamicPrintConfig config = make_config("rib");
-    // sqrt(200 / 0.2) = 31.62 mm square, plus the 8 mm rib bulge along the diagonal.
-    const double body = std::sqrt(1000.);
-    WipeTowerFootprint fp = estimate(config, 3, 0.2, 5.);
-    CHECK_THAT(fp.depth, WithinAbs(8. / std::sqrt(2.) + body, 1e-5));
-    CHECK_THAT(fp.width, WithinAbs(fp.depth, 1e-9));
-    // The extra rib length runs along the diagonal and grows the footprint by its projection.
+    const double width = GENERATE(20., 50.);
+    const double rib_width = GENERATE(0., 8., 50.);
+    config.set_key_value("prime_tower_width", new ConfigOptionFloat(width));
+    config.set_key_value("wipe_tower_rib_width", new ConfigOptionFloat(rib_width));
+    const double depth = 1000. / width;
+    const double rib_w = std::min(rib_width, std::min(width, depth) / 2.);
+    const double diagonal = std::hypot(width, depth);
+    WipeTowerFootprint fp = estimate(config, 2, 0.2, 5.);
+    CHECK_THAT(fp.width, WithinAbs(width + rib_w * depth / diagonal, 1e-5));
+    CHECK_THAT(fp.depth, WithinAbs(depth + rib_w * width / diagonal, 1e-5));
     config.set_key_value("wipe_tower_extra_rib_length", new ConfigOptionFloat(4.));
-    CHECK_THAT(estimate(config, 3, 0.2, 5.).depth, WithinAbs((8. + 4.) / std::sqrt(2.) + body, 1e-5));
-    // A tiny tower caps the rib width at half its depth: 5 mm body, 2.5 mm rib.
-    config.set_key_value("wipe_tower_extra_rib_length", new ConfigOptionFloat(0.));
-    config.set_key_value("prime_volume", new ConfigOptionFloat(5.));
-    CHECK_THAT(estimate(config, 2, 0.2, 5.).depth, WithinAbs(2.5 / std::sqrt(2.) + 5., 1e-5));
+    fp = estimate(config, 2, 0.2, 5.);
+    CHECK_THAT(fp.width, WithinAbs(width + (4. * width + rib_w * depth) / diagonal, 1e-5));
+    CHECK_THAT(fp.depth, WithinAbs(depth + (4. * depth + rib_w * width) / diagonal, 1e-5));
+    config.set_key_value("wipe_tower_extra_rib_length", new ConfigOptionFloat(-4.));
+    fp = estimate(config, 2, 0.2, 5.);
+    CHECK_THAT(fp.width, WithinAbs(width + rib_w * depth / diagonal, 1e-5));
+    CHECK_THAT(fp.depth, WithinAbs(depth + rib_w * width / diagonal, 1e-5));
+}
+
+TEST_CASE("A short Type2 rib body extends ribs for stability", "[WipeTowerEstimate]") {
+    DynamicPrintConfig config = make_config("rib");
+    config.set_key_value("prime_tower_width", new ConfigOptionFloat(8.));
+    config.set_key_value("prime_volume", new ConfigOptionFloat(4.));
+    const double diagonal = std::hypot(8., 5.);
+    const double extension = WipeTower::get_limit_depth_by_height(100.f) * std::sqrt(2.) - diagonal;
+    REQUIRE(extension > 0.);
+    const WipeTowerFootprint fp = estimate(config, 2, 0.2, 100.);
+    CHECK_THAT(fp.width, WithinAbs(8. + (extension * 8. + 2.5 * 5.) / diagonal, 1e-5));
+    CHECK_THAT(fp.depth, WithinAbs(5. + (extension * 5. + 2.5 * 8.) / diagonal, 1e-5));
 }
 
 TEST_CASE("Every wall and tower type is read the same from a preset and a static config", "[WipeTowerEstimate]") {
@@ -290,12 +308,14 @@ TEST_CASE("Every wall and tower type is read the same from a preset and a static
     CHECK(type == (std::string(tower_type) == "type1" ? WipeTowerType::Type1 : WipeTowerType::Type2));
     CHECK(resolve_wipe_tower_type(static_config) == type);
 
-    // Three filaments purge twice per layer on a 5 mm object.
+    // Three filaments on a 5 mm object.
     const WipeTowerFootprint fp          = estimate(preset, 3, 0.2, 5., type);
     const WipeTowerFootprint from_static = estimate(static_config, 3, 0.2, 5., type);
     CHECK(fp.depth > 0.);
-    if (std::string(wall_type) == "rib")
+    if (std::string(wall_type) == "rib" && type == WipeTowerType::Type1)
         CHECK_THAT(fp.width, WithinAbs(fp.depth, 1e-9));
+    else if (std::string(wall_type) == "rib")
+        CHECK(fp.width > fp.depth);
     else
         CHECK_THAT(fp.width, WithinAbs(50., 1e-9));
     CHECK_THAT(from_static.width, WithinAbs(fp.width, 1e-9));

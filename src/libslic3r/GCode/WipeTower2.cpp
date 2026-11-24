@@ -2489,6 +2489,7 @@ void WipeTower2::generate(std::vector<std::vector<WipeTower::ToolChangeResult>> 
 #endif
 
     if (m_wall_type == (int)wtwRib) {
+        #if 0
         // Rib wall: force a square tower like WipeTower::plan_tower_new(), ignoring the
         // configured prime_tower_width (the GUI greys it out in rib mode). The planned depths
         // already include the extra-spacing factors, so sqrt(depth * width) preserves the
@@ -2505,6 +2506,7 @@ void WipeTower2::generate(std::vector<std::vector<WipeTower::ToolChangeResult>> 
                                                 idx == m_first_layer_idx);
             plan_tower();
         }
+        #endif
 
         // Like WipeTower::plan_tower_new(): extend the ribs instead of the tower when the
         // tower is smaller than the height-based stability minimum.
