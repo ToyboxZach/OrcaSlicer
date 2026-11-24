@@ -55,7 +55,6 @@ add_executable(${_TEST_NAME}_tests
     test_imex_zones.cpp
     test_multimaterial_segmentation.cpp
     test_placeholder_parser.cpp
-    test_png_read_write.cpp
     test_polygon.cpp
     test_mutable_polygon.cpp
     test_mutable_priority_queue.cpp
@@ -101,7 +100,7 @@ endif ()
 if (NOT SLIC3R_HEADLESS)
     target_sources(${_TEST_NAME}_tests PRIVATE
         test_marchingsquares.cpp test_mesh_repair.cpp test_step.cpp
-        test_drc.cpp test_texture_import.cpp)
+        test_drc.cpp test_png_read_write.cpp test_texture_import.cpp)
     # Headless builds omit the Draco importer and texture-painting backend.
     # test_drc.cpp encodes its own fixtures, so it also needs the private dependency.
     find_package(Draco REQUIRED)

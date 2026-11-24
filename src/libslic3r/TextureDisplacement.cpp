@@ -52,6 +52,7 @@
 
 namespace Slic3r {
 
+#ifndef SLIC3R_HEADLESS
 bool DecodedHeightTexture::texel_tap(const Vec2f &uv, bool tile_enabled, TextureTileMethod tile_method,
                                      TexelTap &tap) const
 {
@@ -5720,6 +5721,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
     if (out_cut_count) *out_cut_count = cut_count;
     return out;
 }
+#endif
 
 // ---------------------------------------------------------------------------------------------
 // Project persistence. See the declarations in TextureDisplacement.hpp for why this is JSON rather

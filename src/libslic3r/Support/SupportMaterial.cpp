@@ -778,12 +778,12 @@ public:
                 dilate_trimming_region(rasterize_polygons(m_grid_size, m_pixel_size, m_bbox.min, *m_trimming_polygons), m_grid_size),
                 grid_blocks, oversampling);
 
-    #ifdef SLIC3R_DEBUG
+    #if defined(SLIC3R_DEBUG) && !defined(SLIC3R_HEADLESS)
             {
                 static int irun;
                 Slic3r::png::write_gray_to_file_scaled(debug_out_path("support-rasterizer-%d.png", irun++), m_grid_size.x(), m_grid_size.y(), m_grid2.data(), 4);
             }
-    #endif // SLIC3R_DEBUG
+    #endif
 
     #else // SUPPORT_USE_AGG_RASTERIZER
             // Create an EdgeGrid, initialize it with projection, initialize signed distance field.

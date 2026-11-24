@@ -50,6 +50,7 @@
 using namespace Slic3r;
 using Catch::Matchers::WithinAbs;
 
+#ifndef SLIC3R_HEADLESS
 // Encodes a flat (uniform-value) grayscale image through Slic3r's own PNG writer/reader round
 // trip, so decode_height_texture() (which only accepts true 8-bit grayscale PNG) is guaranteed a
 // compatible file, exactly like the GUI's "Add texture" import path does.
@@ -2998,6 +2999,8 @@ TEST_CASE("A second bake beside a first comes out as fine as a single bake", "[T
     CHECK(second <= single * 5 / 4);
 }
 
+#endif
+
 // The .3mf stores the layer stack as JSON (see texture_displacement_layers_to_json). Two properties
 // matter: everything the UV editor and the panel can set has to survive a round trip, and a document
 // written by a build that knew fewer fields has to keep loading, with the missing ones left at their
@@ -3169,6 +3172,7 @@ TEST_CASE("Texture displacement JSON with a wrong-typed element or an out-of-ran
     CHECK(options.color_mix_count == 7);
 }
 
+#ifndef SLIC3R_HEADLESS
 TEST_CASE("whether a layer's texture has colour agrees with its decode", "[TextureDisplacement]")
 {
     TextureDisplacementLayer gray;
@@ -3536,3 +3540,4 @@ TEST_CASE("an unpainted part of the source carries no paint onto the rebuilt mes
             CHECK(state[t] == uint8_t(EnforcerBlockerType::NONE));
     }
 }
+#endif

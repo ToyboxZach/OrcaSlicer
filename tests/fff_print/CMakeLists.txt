@@ -34,12 +34,14 @@ add_executable(${_TEST_NAME}_tests
 	test_slicing_pipeline_hook.cpp
 	test_spiral_vase.cpp
 	test_support_material.cpp
-	test_texture_displacement.cpp
 	test_tree_support.cpp
 	test_trianglemesh.cpp
 	test_wipe.cpp
 	test_wipe_tower.cpp
 	)
+if (NOT SLIC3R_HEADLESS)
+    target_sources(${_TEST_NAME}_tests PRIVATE test_texture_displacement.cpp)
+endif ()
 target_link_libraries(${_TEST_NAME}_tests test_common libslic3r Catch2::Catch2WithMain)
 if (SLIC3R_PCH AND NOT SLIC3R_SYNTAXONLY)
     add_precompiled_header(${_TEST_NAME}_tests ${CMAKE_SOURCE_DIR}/src/libslic3r/pchheader.hpp FORCEINCLUDE)

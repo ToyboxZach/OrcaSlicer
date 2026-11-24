@@ -612,6 +612,19 @@ if (SLIC3R_HEADLESS)
         Geometry/VoronoiUtilsCgal.hpp
         ObjColorUtils.cpp
         ObjColorUtils.hpp
+        PNGReadWrite.cpp
+        PNGReadWrite.hpp
+        TextureBake/TextureBakeIndex.cpp
+        TextureBake/TextureBakeSubdivide.cpp
+        TextureBake/TextureBakeRegularize.cpp
+        TextureBake/TextureBakeRelocate.cpp
+        TextureBake/TextureBakeFlip.cpp
+        TextureBake/TextureBakeDebug.cpp
+        TextureBake/TextureBakeDisplace.cpp
+        TextureBake/TextureBakeDecimate.cpp
+        TextureBake/TextureBakeRepair.cpp
+        TextureBake/TextureBakePipeline.cpp
+        TextureBake/TextureBakeMesh.cpp
         TexturePainting.cpp
         TexturePainting.hpp
         TextureToColor/TextureToColor.cpp
@@ -665,7 +678,6 @@ if (SLIC3R_HEADLESS)
         MeshBoolean.cpp
         MeshBoolean.hpp
     )
-    find_package(PNG REQUIRED)
 endif ()
 
 if (APPLE)
@@ -950,10 +962,6 @@ if(NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)
         PNG::PNG
         OpenSSL::Crypto
     )
-endif()
-
-if (SLIC3R_HEADLESS)
-    target_link_libraries(libslic3r PRIVATE PNG::PNG)
 endif()
 
 if (NOT EMSCRIPTEN AND NOT SLIC3R_HEADLESS)

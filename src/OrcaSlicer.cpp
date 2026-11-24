@@ -631,6 +631,7 @@ void record_exit_reson(std::string outputdir, int code, int plate_id, std::strin
 #endif
 }
 
+#if defined(SLIC3R_GUI) && !defined(SLIC3R_HEADLESS)
 static int decode_png_to_thumbnail(std::string png_file, ThumbnailData& thumbnail_data)
 {
     if (!boost::filesystem::exists(png_file))
@@ -663,6 +664,7 @@ static int decode_png_to_thumbnail(std::string png_file, ThumbnailData& thumbnai
 
     return 0;
 }
+#endif
 
 static void glfw_callback(int error_code, const char* description)
 {

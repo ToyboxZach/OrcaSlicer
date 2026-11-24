@@ -28,7 +28,7 @@ cmake --build build/headless-mac-arm64 --config Release --target fff_print_tests
 ctest --test-dir build/headless-mac-arm64/tests/fff_print -C Release -L '^Wipe$' --output-on-failure
 ```
 
-Headless builds omit tests for the unavailable Draco importer and texture-painting backend.
+Headless builds omit tests for the unavailable Draco importer, PNG I/O, texture-painting backend and texture baking.
 Use a full build to run those tests.
 
 Rebuild a single suite with `cmake --build build --config Release --target <suite>_tests`. Visual Studio, Xcode and the Ninja Multi-Config generator that `build_linux.sh` uses are all multi-configuration, so `ctest` needs `-C` on every platform; without it, tests registered with plain `add_test()` lose their labels and report "Not Run".
